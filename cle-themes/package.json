@@ -1,0 +1,42 @@
+{
+	"name": "CLE-themes",
+	"displayName": "CLE Themes",
+	"description": "Themes designed for C/C++ with support for CLE Pragmas",
+	"version": "0.0.1",
+	"publisher": "PerspectaLabs",
+        "icon": "images/logo.png",
+	"engines": {
+		"vscode": "^1.40.0"
+	},
+	"categories": [
+		"Themes"
+	],
+	"repository": {
+		"type": "git",
+                "url": "https://github.com/kobalicek/reloaded-themes.git"
+	},
+	"contributes": {
+		"themes": [
+			{
+				"label": "Reloaded Light [Default]",
+				"path": "./themes/reloaded-light.json",
+				"uiTheme": "vs"
+			},
+			{
+				"label": "Reloaded Dark [Default]",
+				"path": "./themes/reloaded-dark.json",
+				"uiTheme": "vs-dark"
+			},
+			{
+				"label": "Reloaded Dark [Darker]",
+				"path": "./themes/reloaded-dark-darker.json",
+				"uiTheme": "vs-dark"
+			},
+			{
+				"label": "Reloaded Dark [High-Contrast]",
+				"path": "./themes/reloaded-dark-hc.json",
+				"uiTheme": "hc-black"
+			}
+		]
+	}
+}

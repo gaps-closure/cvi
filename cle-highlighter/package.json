@@ -1,0 +1,75 @@
+{
+	"name": "CLE-Highlighter",
+	"displayName": "CLE Highlighter",
+	"description": "C/C++ syntax coloring with support for CLE Pragmas",
+	"version": "0.0.1",
+	"publisher": "PerspectaLabs",
+        "icon": "images/logo.png",
+        "engines": {
+		"vscode": "^1.40.0"
+	},
+	"categories": [
+		"Languages",
+		"Other"
+	],
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/gaps-closure"
+	},
+	"keywords": [
+		"C/C++",
+		"C++",
+		"C",
+		"Syntax",
+		"Highlight"
+	],
+	"contributes": {
+		"languages": [
+			{
+				"id": "cpp",
+				"extensions": [
+					".c",
+					".cc",
+					".cpp",
+					".cxx",
+					".h",
+					".hh",
+					".hpp",
+					".hxx",
+					".m",
+					".mm",
+					".inc",
+					".inl"
+				],
+				"aliases": [
+					"C/C++",
+					"C++",
+					"C",
+					"Cpp",
+					"cpp"
+				],
+				"configuration": "./language-configuration.json"
+			}
+		],
+		"grammars": [
+			{
+				"language": "cpp",
+				"scopeName": "source.cpp",
+				"path": "./syntaxes/c++.json"
+			}
+		],
+    "commands": [
+      {
+          "command": "extension.sayHello",
+          "title": "Show Graph"
+      }
+    ],
+      "menus": {
+        "explorer/context": [{
+            "when": "resourceLangId == dot",
+            "command": "extension.sayHello",
+            "group": "YourGroup@1"
+      }]
+    }            
+	}
+}
