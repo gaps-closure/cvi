@@ -1,0 +1,27 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "CVI Clean",
+        "type": "shell",
+        "command": "rm -rf build packages",
+        "args": [
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        }
+      },
+      {
+        "label": "CVI Build",
+        "type": "shell",
+        "command": "./build.sh -d",
+        "args": [
+        ],
+        "group": {
+          "kind": "build",
+          "isDefault": true
+        }
+      }
+    ]
+  }
