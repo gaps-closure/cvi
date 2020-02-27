@@ -14,10 +14,14 @@ This repository is maintained by Perspecta Labs.
 CVI has been developed, deployed, and tested using Ubuntu 19.10 x86_64 Linux. We recommend this distribution to simplify installation of external dependencies. Upon cloning the CVI repository, follow these steps to install required packages (assumes sudo permissions enabled for calling `apt`):
 
 ```
-./build.sh 
+./build.sh -h
+#Usage: ./build.sh [ -cdh ]
+#-h        Help
+#-c        Clean up
+#-d        Dry run
 ```
 
-This script downloads, installs or builds the following
+Running this script without options will download and install VS Code, and build the following
 * Visual Studio Code and its Extension Manager
 * CLE VS Code extensions
 

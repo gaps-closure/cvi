@@ -1,11 +1,10 @@
 #!/bin/bash
 
 BUILD="$(pwd)/build"
-PACKAGE_DIR="packages"
 
 usage_exit() {
   [[ -n "$1" ]] && echo $1
-  echo "Usage: $0 [ -d ] \\"
+  echo "Usage: $0 [ -cdh ] "
   echo "-h        Help"
   echo "-c        Clean up"
   echo "-d        Dry run"
@@ -14,7 +13,7 @@ usage_exit() {
 
 handle_opts() {
   local OPTIND
-  while getopts "dc" options; do
+  while getopts "cdh" options; do
     case "${options}" in
       c) CLEAN=1                ;;
       d) DRY_RUN="--dry-run"    ;;
@@ -99,16 +98,11 @@ build_vscode_extensions () {
 
 handle_opts "$@"
 
-echo "BUILD=${BUILD}, PACKAGE_DIR=${PACKAGE_DIR}"
+echo "BUILD=${BUILD}"
 
 if [[ $CLEAN ]]; then
-    rm -rf $BUILD $PACKAGE_DIR
+    rm -rf $BUILD
 else
-    if [ ! "$(ls -A pdg)" ]; then
-        git submodule init
-        git submodule update
-    fi
-
     mkdir -p $BUILD
 
     install_vscode
