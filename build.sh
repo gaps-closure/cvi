@@ -39,7 +39,7 @@ install_vscode () {
   if [ -f $VSCODE_LIST ]; then
       echo "$VSCODE_LIST already exists."
   else
-      sudo echo $CONTENTS > $VSCODE_LIST
+      sudo bash -c 'echo deb [arch=amd64] http://packages.microsoft.com/repos/vscode stable main > /etc/apt/sources.list.d/vscode.list'
   fi
 
   echo "Importing package signing key"
@@ -59,13 +59,18 @@ install_vsce () {
           return
       fi
   fi
-  
+ 
   NODE=$(nodejs -v)
   if [ $? -eq 0 ]; then
       echo "Node.js $NODE is installed"
   else
       echo "Installing Node.js"
-      sudo apt install $DRY_RUN nodejs
+      # TODO: check if Ubuntu 19.10 can use this. sudo apt install $DRY_RUN nodejs
+      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+      sudo apt-get install -y nodejs
+      sudo apt-get update
+      sudo apt-get install npm
+      sudo npm install npm --global
   fi
   
   echo "Installing Visual Studio Code Extension Manager (vsce)"
