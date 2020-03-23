@@ -33,6 +33,12 @@ install_vscode () {
       fi
   fi
 
+  CURL=$(curl --version)
+  if [ $? -ne 0 ]; then
+      echo "installing curl"
+      sudo apt install -y curl
+  fi
+
   VSCODE_LIST="/etc/apt/sources.list.d/vscode.list"
   CONTETNS="deb [arch=amd64] http://packages.microsoft.com/repos/vscode stable main"
 
@@ -48,7 +54,7 @@ install_vscode () {
 
   echo "Installing Visual Studio Code"
   sudo apt-get update
-  sudo apt-get install code
+  sudo apt-get install -y code
 }
 
 install_vsce () {
@@ -65,12 +71,15 @@ install_vsce () {
       echo "Node.js $NODE is installed"
   else
       echo "Installing Node.js"
-      # TODO: check if Ubuntu 19.10 can use this. sudo apt install $DRY_RUN nodejs
-      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
-      sudo apt-get install -y nodejs
-      sudo apt-get update
-      sudo apt-get install npm
-      sudo npm install npm --global
+      sudo apt install -y nodejs
+      sudo apt-get install -y npm
+      sudo npm install npm --global      
+      # do the following if the above does not work
+      # curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+      # sudo apt-get install -y nodejs
+      # sudo apt-get update
+      # sudo apt-get install npm      
+      #sudo npm install npm --global
   fi
   
   echo "Installing Visual Studio Code Extension Manager (vsce)"
