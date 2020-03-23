@@ -71,9 +71,15 @@ install_vsce () {
       echo "Node.js $NODE is installed"
   else
       echo "Installing Node.js"
-      sudo apt install -y nodejs
-      sudo apt-get install -y npm
-      sudo npm install npm --global      
+      # for some reason, ubuntu 19.10 installs node.js 10.15, which does not work.
+      # this will install version 12.
+      sudo apt update
+      sudo apt -y upgrade
+      sudo apt update
+      sudo apt -y install curl dirmngr apt-transport-https lsb-release ca-certificates
+      curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
+      sudo apt -y install nodejs
+
       # do the following if the above does not work
       # curl -sL https://deb.nodesource.com/setup_12.x | sudo -E bash -
       # sudo apt-get install -y nodejs
