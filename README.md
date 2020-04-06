@@ -66,21 +66,21 @@ code .
 Two simple test tasks are defined in .vscode/tasks.json. To see how tasks are run, start VS Code as follows, if it is not already running.
 
 ```
-cd $CAPO/partitioner
+cd $CVI
 code .
 ```
-The following tasks, listed in order of dependency, are defined in the partitioner project.
+The following tasks, listed in order of dependency, are defined in the examples project.
 * CVI Build - This is a task that runs the script that we had used above to build the project.
 * CVI Clean - This task cleans up temporary files and diretories created by the build task.
 
 To run a task,
 * Select Run Task from the Terminal menu.
-* A list of Partitioner tasks will be displayed.
+* A list of CVI example tasks will be displayed.
 * Select the desired task from the list.
 * Select 'Continue with scanning the task output'
 
 ## Troubleshooting
-If you are running VS Code through VNC and the backspace key is not working, do the following.
+If you are running VS Code through VNC and the backspace key is not working, start VS Code and do the following.
 * File>Preferences>Settings
 * Type Keyboard into the search box.
 * Select keyboard
