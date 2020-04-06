@@ -33,28 +33,8 @@ install_vscode () {
       fi
   fi
 
-  CURL=$(curl --version)
-  if [ $? -ne 0 ]; then
-      echo "installing curl"
-      sudo apt install -y curl
-  fi
-
-  VSCODE_LIST="/etc/apt/sources.list.d/vscode.list"
-  CONTETNS="deb [arch=amd64] http://packages.microsoft.com/repos/vscode stable main"
-
-  if [ -f $VSCODE_LIST ]; then
-      echo "$VSCODE_LIST already exists."
-  else
-      sudo bash -c 'echo deb [arch=amd64] http://packages.microsoft.com/repos/vscode stable main > /etc/apt/sources.list.d/vscode.list'
-  fi
-
-  echo "Importing package signing key"
-  curl https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > microsoft.gpg
-  sudo mv microsoft.gpg /etc/apt/trusted.gpg.d/microsoft.gpg
-
   echo "Installing Visual Studio Code"
-  sudo apt-get update
-  sudo apt-get install -y code
+  sudo snap install --classic code
 }
 
 install_vsce () {
