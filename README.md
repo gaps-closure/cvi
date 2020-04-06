@@ -66,7 +66,7 @@ code .
 Two simple test tasks are defined in .vscode/tasks.json. To see how tasks are run, start VS Code as follows, if it is not already running.
 
 ```
-cd $MULES/partitioner
+cd $CAPO/partitioner
 code .
 ```
 The following tasks, listed in order of dependency, are defined in the partitioner project.
