@@ -1,0 +1,5 @@
+https://marketplace.visualstudio.com/items?itemName=reloadedextensions.reloaded-cpp
+
+# License
+
+This extension is based on official VSCode C/C++ tokenizer/grammar (which is based on textmate-cpp tokenizer/grammar), additions are licensed under MIT.
