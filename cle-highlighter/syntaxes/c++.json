@@ -351,6 +351,8 @@
         { "include": "#preprocessor-diagnostic" },
         { "include": "#preprocessor-pragma-mark" },
         { "include": "#preprocessor-pragma-cle" },
+	{ "include": "#preprocessor-pragma-cle-begin" },
+	{ "include": "#preprocessor-pragma-cle-end" },
         { "include": "#preprocessor-pragma" }
       ]
     },
@@ -520,6 +522,30 @@
     "preprocessor-pragma-cle": {
       "name": "meta.preprocessor.block",
       "match": "^\\s*((#)\\s*(pragma)\\s+(cle)\\s+(def))\\s+(.*)",
+      "captures": {
+        "1": { "name": "meta.preprocessor.command.cpp" },
+        "2": { "name": "meta.preprocessor.hash.cpp" },
+        "3": { "name": "operator.namespace-separator.cpp" },
+        "4": { "name": "cle" },
+        "5": { "name": "operator.namespace-separator.cpp" },
+        "6": { "name": "meta.toc-list.pragma-mark.cpp" }
+      }
+    },
+    "preprocessor-pragma-cle-begin": {
+      "name": "meta.preprocessor.block",
+      "match": "^\\s*((#)\\s*(pragma)\\s+(cle)\\s+(begin))\\s+(.*)",
+      "captures": {
+        "1": { "name": "meta.preprocessor.command.cpp" },
+        "2": { "name": "meta.preprocessor.hash.cpp" },
+        "3": { "name": "operator.namespace-separator.cpp" },
+        "4": { "name": "cle" },
+        "5": { "name": "operator.namespace-separator.cpp" },
+        "6": { "name": "meta.toc-list.pragma-mark.cpp" }
+      }
+    },
+    "preprocessor-pragma-cle-end": {
+      "name": "meta.preprocessor.block",
+      "match": "^\\s*((#)\\s*(pragma)\\s+(cle)\\s+(end))\\s+(.*)",
       "captures": {
         "1": { "name": "meta.preprocessor.command.cpp" },
         "2": { "name": "meta.preprocessor.hash.cpp" },
