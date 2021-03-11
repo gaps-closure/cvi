@@ -82,7 +82,7 @@ To run a task,
 ## Troubleshooting
 If you are running VS Code through VNC and the backspace key is not working, start VS Code and do the following.
 * File>Preferences>Settings
-* Type Keyboard into the search box.
-* Select keyboard
-* Change the value to keyCode
+* Type keyboard into the search box.
+* Select keyboard.dispatch 
+* Change the value to keyCode using the drop down
 
