@@ -1,5 +1,5 @@
 from pygls.lsp import (Diagnostic, DidChangeTextDocumentParams,
-                       DidOpenTextDocumentParams)
+                       DidOpenTextDocumentParams, DiagnosticSeverity)
 from pygls.lsp.methods import TEXT_DOCUMENT_DID_CHANGE, TEXT_DOCUMENT_DID_OPEN
 from pygls.lsp.types import Position, Range
 from pygls.server import LanguageServer
@@ -9,14 +9,16 @@ server = LanguageServer()
 # Sends back constant diagnostics
 # TODO: Interface with conflict analyzer
 def validate(ls, text_doc):
-    diagnostic = Diagnostic(
-        range=Range(
-            start=Position(line=0, character=1),
-            end=Position(line=0, character=1)),
-        message="Example CLE Message"
-    )
+    if text_doc.uri.endswith('example2.c'):
+        error = Diagnostic(
+            range=Range(
+                start=Position(line=42, character=4),
+                end=Position(line=42, character=15)),
+            message="Conflict: Purple not shareable, wrapping not feasible",
+            severity=DiagnosticSeverity.Error
+        )
 
-    ls.publish_diagnostics(text_doc.uri, [diagnostic])
+        ls.publish_diagnostics(text_doc.uri, [error])
 
 @server.feature(TEXT_DOCUMENT_DID_OPEN)
 def did_open(ls, params: DidOpenTextDocumentParams):
