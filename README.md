@@ -1,15 +1,19 @@
 # CLE VSCode extension 
 
+## Requirements
+
+- Haskell stack 
+- nodejs
+- npm
+- libzmq
+
 ## Quick start
 
 ```bash
 npm install
-python3 -m pip install -r requirements.txt
 ```
 
-Press `CTRL+SHIFT+B` to start typescript compilation inside watch mode.
-
-Press `f5` to open the extension in a new window. 
+Press `f5` to build and open the extension in a new window. 
 A `*.c` or `*.cpp` file must be opened to activate the extension. 
 
 ## Requirements of Language Server

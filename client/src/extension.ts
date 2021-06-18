@@ -1,28 +1,26 @@
-import * as path from 'path';
-import { ExtensionContext, commands, window } from 'vscode';
+import { ExtensionContext, commands, window, env } from 'vscode';
 import {
 	Executable,
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
 } from 'vscode-languageclient/node';
+import * as path from 'path';
 
 let client: LanguageClient;
 
 // Called when extension is activated. See package.json "activationEvents"
 export function activate(context: ExtensionContext) {
 
-	// Path to python server file
-	let serverModule = context.asAbsolutePath(
-		path.join('server', 'lang_server.py')
-	);
-
-	// Server executable
-	// Python 3 must be installed
+	// Run server executable
+	let serverPath = context.asAbsolutePath(path.join('server', 'build', 'cle-lang-server'));
 	let executable: Executable = {
-		command: "python3",
-		args: [serverModule]
+		command: "sh",
+		args: ["-c", serverPath]
 	};
+
+	// Extension logging output
+	// let log = window.createOutputChannel("CLE Language Client");
 
 	let serverOptions: ServerOptions = executable;
 
@@ -40,7 +38,7 @@ export function activate(context: ExtensionContext) {
 		}
 		// Create the language client and start the client.
 		client = new LanguageClient(
-			'cleLaguageServer',
+			'cleLanguageServer',
 			'CLE Language Server',
 			serverOptions,
 			clientOptions
