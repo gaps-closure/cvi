@@ -30,11 +30,12 @@ executables:
     - lsp
     - zeromq4-haskell
     - text
+    - bytestring
     - lens
     - hslogger
     - transformers
-
-tests:
+    - aeson
+    - unliftio-core
   cle-lang-server-test:
     main:                TestZMQServer.hs
     source-dirs:         test

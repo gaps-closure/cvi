@@ -6,7 +6,8 @@ import Data.Aeson
 import qualified Data.ByteString.Char8 as CS
 import qualified Data.ByteString.Lazy.Char8 as LCS
 import GHC.Generics
-import System.ZMQ4.Monadic
+import System.ZMQ4
+import qualified Data.ByteString.Lazy as BS
 
 data Diagnostic = Diagnostic
   { lineNo :: Int,
@@ -30,14 +31,14 @@ diagnostic =
 main :: IO ()
 main = do
   putStr "\n"
-  runZMQ $ do
-    rep <- socket Rep
-    bind rep "tcp://*:5555"
-    liftIO $ putStrLn "Bound to address: tcp://*:5555"
-    forever $ do
+  ctx <- context
+  rep <- socket ctx Rep
+  bind rep "tcp://*:5555"
+  putStrLn "Bound to address: tcp://*:5555"
+  forever $ do
       str <- receive rep
-      liftIO $ do
-        putStrLn "Received message: "
-        CS.putStrLn str
-        putStrLn "Sending JSON: "
-        LCS.putStrLn (encode diagnostic)
+      putStrLn "Received message: "
+      CS.putStrLn str
+      putStrLn "Sending JSON: "
+      LCS.putStrLn (encode diagnostic)
+      send rep [] $ BS.toStrict $ encode diagnostic
