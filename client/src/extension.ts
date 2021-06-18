@@ -16,7 +16,7 @@ export function activate(context: ExtensionContext) {
 	let serverPath = context.asAbsolutePath(path.join('server', 'build', 'cle-lang-server'));
 	let executable: Executable = {
 		command: "sh",
-		args: ["-c", serverPath]
+		args: ["-c", [serverPath, "--addr", "tcp://localhost:5555"].join(" ")]
 	};
 
 	// Extension logging output

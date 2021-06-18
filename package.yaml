@@ -33,3 +33,17 @@ executables:
     - lens
     - hslogger
     - transformers
+
+tests:
+  cle-lang-server-test:
+    main:                TestZMQServer.hs
+    source-dirs:         test
+    ghc-options:
+    - -threaded
+    - -rtsopts
+    - -with-rtsopts=-N
+    dependencies:
+    - hspec
+    - zeromq4-haskell
+    - aeson
+    - bytestring
