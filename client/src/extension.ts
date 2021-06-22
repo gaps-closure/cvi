@@ -1,4 +1,4 @@
-import { ExtensionContext, commands, window, env, workspace } from 'vscode';
+import { ExtensionContext, commands, window, env, workspace, CodeLensProvider, TextDocument, CancellationToken, CodeLens } from 'vscode';
 import {
 	Executable,
 	LanguageClient,
@@ -36,10 +36,6 @@ export function activate(context: ExtensionContext) {
 	// get sent to the server on open/change
 	let clientOptions: LanguageClientOptions = {
 		documentSelector: [{ scheme: 'file', language: 'c' }, { scheme: 'file', language: 'cpp' }],
-		synchronize: {
-			// Notify the server about file changes to '.clientrc files contained in the workspace
-			fileEvents: workspace.createFileSystemWatcher('**/topology.json')
-		}
 	};
 
 	// Registers commands for server start/stop/restart. See package.json "commands"
