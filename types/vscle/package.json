@@ -1,0 +1,5 @@
+{
+  "name": "vscle",
+  "version": "1.0.0",
+  "typings": "analyzer.d.ts"
+}

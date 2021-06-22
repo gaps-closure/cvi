@@ -35,9 +35,9 @@
 		"vscode:prepublish": "npm run compile",
 		"compile": "tsc -b",
 		"watch": "tsc -b -w",
-		"pretest": "npm run compile && npm run lint",
+		"pretest": "npm run compile",
 		"lint": "eslint src --ext ts",
-		"test": "node ./out/test/runTest.js"
+		"test": "node test/out/zmqtest/zmqtest.js"
 	},
 	"devDependencies": {
 		"@types/glob": "^7.1.3",

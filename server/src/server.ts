@@ -168,7 +168,35 @@ documents.onDidChangeContent(change => {
 });
 
 async function validateTextDocument(textDocument: TextDocument): Promise<void> {
+	// TODO: move to onWorkspaceChange and onInitialized and cache results
+
 	// send URI to zmq server and get response
+	const start: Start = {
+		action: 'Start',
+		options: [],
+		filenames: [URI.parse(textDocument.uri).fsPath]
+	};
+	await sock.send(JSON.stringify(start));
+
+	// TODO: surround with try-catch for EBUSY error
+	const [msg] = await sock.receive();
+	const res: AnalyzerResult = JSON.parse(msg.toString());
+
+	switch (res.result) {
+		case "Conflict":
+			// TODO: send diagnostics
+			connection.console.log(JSON.stringify(res));
+			break;
+		case 'Success':	
+			// TODO: send success dialog 
+			connection.window.showInformationMessage('Conflict Analysis successful!');
+			break;
+		case 'Error':
+			// TODO: add message action to see logs
+			connection.window.showErrorMessage('Conflict Analysis error');
+			break;
+	}
+
 	// await sock.send(JSON.stringify({ documentURI: textDocument.uri }));
 	// const [buffer] = await sock.receive();
 	// const diag: Diagnostic = JSON.parse(buffer.toString());
