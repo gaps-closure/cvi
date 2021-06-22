@@ -1,9 +1,10 @@
-import { ExtensionContext, commands, window, env } from 'vscode';
+import { ExtensionContext, commands, window, env, workspace } from 'vscode';
 import {
 	Executable,
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
+	TransportKind,
 } from 'vscode-languageclient/node';
 import * as path from 'path';
 
@@ -12,22 +13,33 @@ let client: LanguageClient;
 // Called when extension is activated. See package.json "activationEvents"
 export function activate(context: ExtensionContext) {
 
-	// Run server executable
-	let serverPath = context.asAbsolutePath(path.join('server', 'build', 'cle-lang-server'));
-	let executable: Executable = {
-		command: "sh",
-		args: ["-c", [serverPath, "--addr", "tcp://localhost:5555"].join(" ")]
+	// The server is implemented in node
+	let serverModule = context.asAbsolutePath(
+		path.join('server', 'out', 'server.js')
+	);
+	// The debug options for the server
+	// --inspect=6009: runs the server in Node's Inspector mode so VS Code can attach to the server for debugging
+	let debugOptions = { execArgv: ['--nolazy', '--inspect=6009'] };
+
+	// If the extension is launched in debug mode then the debug server options are used
+	// Otherwise the run options are used
+	let serverOptions: ServerOptions = {
+		run: { module: serverModule, transport: TransportKind.ipc },
+		debug: {
+			module: serverModule,
+			transport: TransportKind.ipc,
+			options: debugOptions
+		}
 	};
-
-	// Extension logging output
-	// let log = window.createOutputChannel("CLE Language Client");
-
-	let serverOptions: ServerOptions = executable;
 
 	// Client options contains a document selector for which files
 	// get sent to the server on open/change
 	let clientOptions: LanguageClientOptions = {
 		documentSelector: [{ scheme: 'file', language: 'c' }, { scheme: 'file', language: 'cpp' }],
+		synchronize: {
+			// Notify the server about file changes to '.clientrc files contained in the workspace
+			fileEvents: workspace.createFileSystemWatcher('**/topology.json')
+		}
 	};
 
 	// Registers commands for server start/stop/restart. See package.json "commands"
