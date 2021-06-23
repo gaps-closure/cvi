@@ -28,6 +28,10 @@
 			{
 				"command": "vscle.restartLanguageServer",
 				"title": "CLE: Restart Language Server"
+			},
+			{
+				"command": "vscle.startConflictAnalyzer",
+				"title": "CLE: Start Conflict Analyzer"
 			}
 		]
 	},

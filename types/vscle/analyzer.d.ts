@@ -1,5 +1,5 @@
 type FilePath = string;
-type NonEmpty<T> = T extends Array<infer U> ? U[] & { '0': U } : never;
+type NonEmpty<T> = T extends Array<infer U> ? U[] & { 0: U } : never;
 /**
  * Parameters sent from the language server to the
  * conflict analyzer at its invocation.
@@ -32,9 +32,10 @@ type ConflictIdentifier
  */
 type ConflictRemedy = string;
 
-interface FileSource {
-    line: number,
+interface Source {
     file: FilePath
+    line: number,
+    character?: number
 }
 /**
  * Sent from the conflict analyzer to the server
@@ -51,14 +52,14 @@ interface Conflict {
      */
     description: string,
     /**
-     * The source file and line number the conflict originated from
+     * An array of source file and line number the conflict originated from
      */
-    source?: FileSource,
+    sources: Source[],
 
     /** 
-     * A possible remedy to the conflict
+     * A list of possible remedies to the conflict
     */
-    remedy?: ConflictRemedy
+    remedies: ConflictRemedy[]
 }
 
 /**
@@ -70,16 +71,16 @@ interface Success {
 }
 
 /**
- * TODO: elaborate type of error type
+ * Error message with an errno and its associated message
+ * and a custom error message
  */
-type ErrorType = any;
-
-interface Error {
-    type: ErrorType,
-    message: string
+interface AnalyzerError {
+    errno: number,
+    errMessage: string,
+    customMessage: string
 }
 
 type AnalyzerResult
     = { result: 'Conflict', conflicts: NonEmpty<Conflict[]> }
-    | { result: 'Error', errors: NonEmpty<Error[]> }
+    | { result: 'Error', errors: NonEmpty<AnalyzerError[]> }
     | Success;
