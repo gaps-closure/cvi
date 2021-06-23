@@ -2,7 +2,6 @@
 
 ## Requirements
 
-- Haskell stack 
 - nodejs
 - npm
 - libzmq
