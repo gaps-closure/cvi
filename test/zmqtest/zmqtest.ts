@@ -1,4 +1,5 @@
 import * as zmq from 'zeromq';
+import { Start, Conflict, Success } from '../../types/vscle/analyzer';
 const sock = new zmq.Reply;
 
 function timeout(ms: number) {

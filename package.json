@@ -33,7 +33,23 @@
 				"command": "vscle.startConflictAnalyzer",
 				"title": "CLE: Start Conflict Analyzer"
 			}
-		]
+		],
+		"configuration": {
+			"title": "VSCLE",
+			"properties": {
+				"vscle.sourceDirs": {
+					"type": "array",
+					"default": [
+						"./annotated"
+					],
+					"description": "Source directories to pass into the conflict analyzer."
+				},
+				"vscle.zmqURI": {
+					"type": "string",
+					"description": "The ZMQ uri to use"
+				}
+			}
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

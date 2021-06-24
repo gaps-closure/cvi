@@ -2,20 +2,14 @@ import {
 	createConnection,
 	TextDocuments,
 	Diagnostic,
-	DiagnosticSeverity,
 	ProposedFeatures,
 	InitializeParams,
 	DidChangeConfigurationNotification,
-	CompletionItem,
-	CompletionItemKind,
-	TextDocumentPositionParams,
 	TextDocumentSyncKind,
 	InitializeResult,
 	Position,
 	Range,
-	CodeLens,
 	WorkspaceFolder,
-	ExecuteCommandParams,
 	ClientCapabilities
 } from 'vscode-languageserver/node';
 
@@ -24,34 +18,24 @@ import {
 } from 'vscode-languageserver-textdocument';
 
 import * as zmq from 'zeromq';
-import { PathLike, readdir, readFile, stat } from 'fs';
+import { readdir, readFile, stat } from 'fs';
 import { URI } from 'vscode-uri';
 import path = require('path');
 import { promisify } from 'util';
+import { Start, AnalyzerResult } from '../../types/vscle/analyzer';
+import { Settings } from '../../types/vscle/extension';
+import { NonEmpty } from '../../types/vscle/util';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 const sock = new zmq.Request;
 
 let workspaceFolder: WorkspaceFolder | null = null;
-let topology: Topology | null = null;
 let capabilities: ClientCapabilities | null = null;
 let currentTextDocument: TextDocument | null = null;
-interface EnclaveAssignment {
-	name: string,
-	level: string,
-	line: string
-}
-
-interface Topology {
-	// eslint-disable-next-line @typescript-eslint/naming-convention
-	source_path: string,
-	levels: string[],
-	// eslint-disable-next-line @typescript-eslint/naming-convention
-	global_scoped_vars: EnclaveAssignment[],
-	functions: EnclaveAssignment[]
+let settings: Settings = {
+	sourceDirs: ['./annotated']
 };
-
 
 connection.onInitialize((params: InitializeParams) => {
 	const result: InitializeResult = {
@@ -78,34 +62,21 @@ connection.onInitialize((params: InitializeParams) => {
 connection.onInitialized(async () => {
 	// Register for all configuration changes.
 	connection.client.register(DidChangeConfigurationNotification.type, undefined);
+
 	// Connect to zero mq server and set timeout
 	sock.connect(process.env.ZMQ_URI || "tcp://localhost:5555");
 	sock.sendTimeout = 500;
-	// Try to find topology.json
-	// topology = await readTopologyJSON();
+
+	// Sync settings
+	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
 });
 
+connection.onDidChangeConfiguration(async () => {
+	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
+});
 documents.onDidOpen(params => {
 	currentTextDocument = params.document;
 });
-
-async function readTopologyJSON(): Promise<Topology | null> {
-	if (workspaceFolder !== null) {
-		const uri = URI.parse(workspaceFolder.uri);
-		let file;
-		try {
-			const asyncReadFile = promisify(readFile);
-			file = await asyncReadFile(path.join(uri.fsPath, 'topology.json'));
-		} catch (e) {
-			connection.console.error(e);
-			connection.console.log("Could not find topology.json");
-			return null;
-		}
-		let topology: Topology = JSON.parse(file.toString());
-		return topology;
-	}
-	return null;
-}
 
 async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 	const asnycReadDir = promisify(readdir);
@@ -132,38 +103,22 @@ async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 	return unflattened.flat();
 }
 
-// Temporarily disabled code lens
-// connection.onCodeLens(({ textDocument }) => {
-// 	if (topology) {
-// 		const textPath = path.parse(path.resolve(URI.parse(textDocument.uri).fsPath));
-// 		const topPath = path.parse(path.resolve(topology.source_path));
-
-// 		// if (path.join(topPath.dir, topPath.base) !== topPath.dir) { return []; }
-// 		connection.console.log(JSON.stringify(textPath));
-// 		connection.console.log(JSON.stringify(topPath));
-// 		const combined = [...topology.functions, ...topology.global_scoped_vars];
-// 		return combined.map(({ level, line }) => {
-// 			let lineNo = Math.max(parseInt(line) - 1, 0);
-// 			return {
-// 				range: Range.create(Position.create(lineNo, 0), Position.create(lineNo, 0)),
-// 				command: {
-// 					title: level,
-// 					command: ""
-// 				}
-// 			};
-// 		});
-// 	}
-// 	return [];
-// });
 
 connection.onExecuteCommand(async params => {
 	if (params.command === 'vscle.startConflictAnalyzer' && workspaceFolder) {
 		try {
-			const files = await getAllCLikeFiles(URI.parse(workspaceFolder.uri).fsPath);
+			const unflattened
+				= await Promise.all(
+					settings.sourceDirs.map(async dir =>
+						await getAllCLikeFiles(dir)));
+			const files = unflattened.flat();
 			if (files.length === 0) {
 				throw new Error('Empty number of source files');
 			}
-			analyze(files as NonEmpty<string[]>);
+			const diagnostics = await analyze(files as NonEmpty<string[]>);
+			if (diagnostics) {
+				connection.sendDiagnostics({ uri: currentTextDocument?.uri ?? '', diagnostics });
+			}
 		} catch (e) {
 			connection.window.showErrorMessage(e.message);
 			connection.console.error(e.message);
@@ -171,31 +126,34 @@ connection.onExecuteCommand(async params => {
 	}
 });
 
-
-async function analyze(documents: NonEmpty<string[]>): Promise<void> {
-	// send URI to zmq server and get response
+async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
+	: Promise<NonEmpty<Diagnostic[]> | null> {
+	// Send URI to zmq server and get response
 	const start: Start = {
 		action: 'Start',
-		options: [],
-		filenames: documents
+		options,
+		filenames
 	};
-
 	let msg;
 	try {
 		await sock.send(JSON.stringify(start));
 		[msg] = await sock.receive();
 	} catch (e) {
-		connection.console.error(e.message);
-		connection.window.showErrorMessage("Could not receive data from conflict analyzer");
-		return;
+		throw new Error("Could not receive data from conflict analyzer");
 	}
 
+	// Parse result
+	let res;
+	try {
+		res = JSON.parse(msg.toString()) as AnalyzerResult;
+	} catch (e) {
+		throw new Error("Could not parse result from conflict analyzer");
+	}
 
-	const res: AnalyzerResult = JSON.parse(msg.toString());
-
+	// Return diagnostics if applicable
 	switch (res.result) {
 		case "Conflict":
-			const diagnostics: Diagnostic[]
+			const diagnostics
 				= res.conflicts
 					.flatMap(conflict =>
 						conflict.sources.map(source => ({ source, ...conflict }))
@@ -216,16 +174,12 @@ async function analyze(documents: NonEmpty<string[]>): Promise<void> {
 								Position.create(conflict.source.line, Number.MAX_VALUE)),
 							message: conflict.description
 						};
-					});
-			connection.sendDiagnostics({ uri: currentTextDocument?.uri ?? '', diagnostics });
-			break;
+					}) as NonEmpty<Diagnostic[]>;
+			return diagnostics;
 		case 'Success':
-			connection.window.showInformationMessage('Conflict Analysis successful!');
-			break;
+			return null;
 		case 'Error':
-			// TODO: add message action to see logs
-			connection.window.showErrorMessage('Conflict Analysis error');
-			break;
+			throw new Error("Received error from conflict analyzer");
 	}
 }
 

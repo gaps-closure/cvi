@@ -1,6 +1,5 @@
-import { ExtensionContext, commands, window, env, workspace, CodeLensProvider, TextDocument, CancellationToken, CodeLens } from 'vscode';
+import { ExtensionContext, commands, window, workspace } from 'vscode';
 import {
-	Executable,
 	LanguageClient,
 	LanguageClientOptions,
 	ServerOptions,
@@ -51,7 +50,6 @@ export function activate(context: ExtensionContext) {
 			serverOptions,
 			clientOptions
 		);
-		window.showInformationMessage("Starting CLE Language Server");
 
 		// Start the client. This will also launch the server
 		client.start();

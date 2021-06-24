@@ -1,10 +1,9 @@
-type FilePath = string;
-type NonEmpty<T> = T extends Array<infer U> ? U[] & { 0: U } : never;
+import { NonEmpty, FilePath } from './util';
 /**
  * Parameters sent from the language server to the
  * conflict analyzer at its invocation.
  */
-interface Start {
+export interface Start {
     action: 'Start',
     /**
      * A list of string arguments, i.e. for logging
@@ -20,7 +19,7 @@ interface Start {
  * Identifies conflicts by name
  * TODO: add more, perhaps turn into an enum
  */
-type ConflictIdentifier
+export type ConflictIdentifier
     = 'Insufficient Enclaves'
     | 'Missing Enclaves'
     | 'Unresolvable Control Conflict'
@@ -30,9 +29,9 @@ type ConflictIdentifier
  * Possible conflict remedies 
  * TODO: convert to enum 
  */
-type ConflictRemedy = string;
+export type ConflictRemedy = string;
 
-interface Source {
+export interface Source {
     file: FilePath
     line: number,
     character?: number
@@ -41,7 +40,7 @@ interface Source {
  * Sent from the conflict analyzer to the server
  * if it finds a conflict.
  */
-interface Conflict {
+export interface Conflict {
     /**
      * The name describing the conflict
      */
@@ -66,7 +65,7 @@ interface Conflict {
  * Sent from the conflict analyzer to the server
  * if there are no conflicts.
  */
-interface Success {
+export interface Success {
     result: 'Success'
 }
 
@@ -74,13 +73,13 @@ interface Success {
  * Error message with an errno and its associated message
  * and a custom error message
  */
-interface AnalyzerError {
+export interface AnalyzerError {
     errno: number,
     errMessage: string,
     customMessage: string
 }
 
-type AnalyzerResult
+export type AnalyzerResult
     = { result: 'Conflict', conflicts: NonEmpty<Conflict[]> }
     | { result: 'Error', errors: NonEmpty<AnalyzerError[]> }
     | Success;
