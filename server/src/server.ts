@@ -23,7 +23,7 @@ import { URI } from 'vscode-uri';
 import path = require('path');
 import { promisify } from 'util';
 import { Start, AnalyzerResult } from '../../types/vscle/analyzer';
-import { Settings } from '../../types/vscle/extension';
+import { Settings, Topology } from '../../types/vscle/extension';
 import { NonEmpty } from '../../types/vscle/util';
 
 const connection = createConnection(ProposedFeatures.all);
@@ -41,11 +41,11 @@ connection.onInitialize((params: InitializeParams) => {
 	const result: InitializeResult = {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Full,
-			// codeLensProvider: {
-			// 	resolveProvider: true
-			// },
 			executeCommandProvider: {
 				commands: ['vscle.startConflictAnalyzer']
+			},
+			codeLensProvider: {
+				resolveProvider: false
 			},
 			workspace: {
 				workspaceFolders: {
@@ -64,7 +64,7 @@ connection.onInitialized(async () => {
 	connection.client.register(DidChangeConfigurationNotification.type, undefined);
 
 	// Connect to zero mq server and set timeout
-	sock.connect(process.env.ZMQ_URI || "tcp://localhost:5555");
+	sock.connect(settings.zmqURI ?? process.env.ZMQ_URI ?? "tcp://localhost:5555");
 	sock.sendTimeout = 500;
 
 	// Sync settings
@@ -107,6 +107,7 @@ async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 connection.onExecuteCommand(async params => {
 	if (params.command === 'vscle.startConflictAnalyzer' && workspaceFolder) {
 		try {
+			// Get all c files from sourceDirs in settings
 			const unflattened
 				= await Promise.all(
 					settings.sourceDirs.map(async dir =>
@@ -115,9 +116,12 @@ connection.onExecuteCommand(async params => {
 			if (files.length === 0) {
 				throw new Error('Empty number of source files');
 			}
+			// Give diagnostics back to user, otherwise show success message
 			const diagnostics = await analyze(files as NonEmpty<string[]>);
 			if (diagnostics) {
 				connection.sendDiagnostics({ uri: currentTextDocument?.uri ?? '', diagnostics });
+			} else {
+				connection.window.showInformationMessage('Conflict Analysis successful');
 			}
 		} catch (e) {
 			connection.window.showErrorMessage(e.message);
@@ -125,6 +129,37 @@ connection.onExecuteCommand(async params => {
 		}
 	}
 });
+
+async function readTopologyJSON() {
+	const readFileAsync = promisify(readFile);
+	const buf = await readFileAsync("./topology.json");
+	return JSON.parse(buf.toString()) as Topology;
+}
+
+connection.onCodeLens(async params => {
+	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
+	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
+	const { dir: textDocDir } = path.parse(fullTextDocPath); 
+	connection.console.log(textDocDir);
+	connection.console.log(JSON.stringify(fullSourceDirPaths));
+	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
+	if (matchedSourceDir) {
+		const top = await readTopologyJSON();
+		const assignments = [...top.global_scoped_vars, ...top.functions];
+		return assignments.map(a => {
+			const line = parseInt(a.line);
+			return {
+				range: Range.create(Position.create(line, 0), Position.create(line, 0)),
+				command: {
+					title: a.level,
+					command: ''
+				}
+			};
+		});
+	}
+	return [];
+});
+
 
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	: Promise<NonEmpty<Diagnostic[]> | null> {
