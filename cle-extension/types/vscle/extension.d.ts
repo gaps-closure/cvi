@@ -12,21 +12,27 @@ export interface Settings {
     /**
      * An optional zmq uri for the language server to connect to 
      */
-    zmqURI?: ZmqURI
-}
+    zmqURI: ZmqURI,
 
-export interface EnclaveAssignment {
-    name: string,
-    level: string,
-    line: string
-}
+    /**
+     * Path to the conflict analyzer python script
+     */
+    conflictAnalyzerPath: FilePath,
 
-/**
- * Topology.json 
- */
-export interface Topology {
-    source_path: FilePath
-    levels: string[],
-    global_scoped_vars: EnclaveAssignment[],
-    functions: EnclaveAssignment[]
+    /**
+     * Prebuild command which runs once per source file. 
+     * Environment variable $SRC_FILE will be set to the file path
+     * Environment variable $WORKING_DIR will be set to the working directory path 
+     */
+    prebuild?: string,
+
+    /**
+     * Path to the python executable. Defaults to using python3
+     */
+    pythonPath?: FilePath,
+
+    /**
+     * Directory to store work in. Defaults to '.cle-work/'
+     */
+    workingDir: FilePath
 }

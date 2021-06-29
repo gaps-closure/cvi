@@ -15,6 +15,22 @@ export interface Start {
     filenames: NonEmpty<FilePath[]>,
 }
 
+export interface EnclaveAssignment {
+    name: string,
+    level: string,
+    line: string
+}
+
+/**
+ * Topology.json 
+ */
+export interface Topology {
+    source_path: FilePath
+    levels: string[],
+    global_scoped_vars: EnclaveAssignment[],
+    functions: EnclaveAssignment[]
+}
+
 /**
  * Identifies conflicts by name
  * TODO: add more, perhaps turn into an enum
@@ -82,4 +98,4 @@ export interface AnalyzerError {
 export type AnalyzerResult
     = { result: 'Conflict', conflicts: NonEmpty<Conflict[]> }
     | { result: 'Error', errors: NonEmpty<AnalyzerError[]> }
-    | Success;
+    | { result: 'Success', topology: Topology };

@@ -22,19 +22,24 @@ import { readdir, readFile, stat } from 'fs';
 import { URI } from 'vscode-uri';
 import path = require('path');
 import { promisify } from 'util';
-import { Start, AnalyzerResult } from '../../types/vscle/analyzer';
-import { Settings, Topology } from '../../types/vscle/extension';
+import { Settings } from '../../types/vscle/extension';
+import { AnalyzerResult, Topology } from '../../types/vscle/analyzer';
 import { NonEmpty } from '../../types/vscle/util';
+import { exec } from 'child_process';
+import { URL } from 'url';
+import { Either, left, right } from 'fp-ts/lib/Either';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
-const sock = new zmq.Request;
 
 let workspaceFolder: WorkspaceFolder | null = null;
 let capabilities: ClientCapabilities | null = null;
 let currentTextDocument: TextDocument | null = null;
 let settings: Settings = {
-	sourceDirs: ['./annotated']
+	sourceDirs: ['./annotated'],
+	workingDir: './.cle-work/',
+	zmqURI: 'tcp://*:5555',
+	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py'
 };
 
 connection.onInitialize((params: InitializeParams) => {
@@ -62,10 +67,6 @@ connection.onInitialize((params: InitializeParams) => {
 connection.onInitialized(async () => {
 	// Register for all configuration changes.
 	connection.client.register(DidChangeConfigurationNotification.type, undefined);
-
-	// Connect to zero mq server and set timeout
-	sock.connect(settings.zmqURI ?? process.env.ZMQ_URI ?? "tcp://localhost:5555");
-	sock.sendTimeout = 500;
 
 	// Sync settings
 	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
@@ -117,11 +118,16 @@ connection.onExecuteCommand(async params => {
 				throw new Error('Empty number of source files');
 			}
 			// Give diagnostics back to user, otherwise show success message
-			const diagnostics = await analyze(files as NonEmpty<string[]>);
-			if (diagnostics) {
-				connection.sendDiagnostics({ uri: currentTextDocument?.uri ?? '', diagnostics });
-			} else {
-				connection.window.showInformationMessage('Conflict Analysis successful');
+			const res = await analyze(files as NonEmpty<string[]>);
+			switch (res._tag) {
+				case "Left":
+					for(const diagnostic of res.left) {
+						const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
+						connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
+					}
+					break;
+				default:
+					connection.window.showInformationMessage('Conflict Analysis successful');
 			}
 		} catch (e) {
 			connection.window.showErrorMessage(e.message);
@@ -140,8 +146,6 @@ connection.onCodeLens(async params => {
 	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
 	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
 	const { dir: textDocDir } = path.parse(fullTextDocPath); 
-	connection.console.log(textDocDir);
-	connection.console.log(JSON.stringify(fullSourceDirPaths));
 	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
 	if (matchedSourceDir) {
 		const top = await readTopologyJSON();
@@ -160,22 +164,38 @@ connection.onCodeLens(async params => {
 	return [];
 });
 
-
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
-	: Promise<NonEmpty<Diagnostic[]> | null> {
-	// Send URI to zmq server and get response
-	const start: Start = {
-		action: 'Start',
-		options,
-		filenames
-	};
-	let msg;
-	try {
-		await sock.send(JSON.stringify(start));
-		[msg] = await sock.receive();
-	} catch (e) {
-		throw new Error("Could not receive data from conflict analyzer");
+	: Promise<Either<NonEmpty<Diagnostic[]>, Topology>> {
+		
+	const execAsync = promisify(exec);
+
+	// Run prebuild task
+	if (settings.prebuild) {
+		for(const fn of filenames) {
+			await execAsync(settings.prebuild, {
+				env: {
+					// eslint-disable-next-line @typescript-eslint/naming-convention
+					"SRC_FILE": fn,
+					// eslint-disable-next-line @typescript-eslint/naming-convention
+					"WORKING_DIR": settings.workingDir
+				}
+			});
+		}
 	}
+
+	// Create ZMQ server
+	const url = new URL(settings.zmqURI);
+	const sock = new zmq.Reply;
+	await sock.bind(settings.zmqURI); 
+
+	// Run conflict analyzer python file
+	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -w ${settings.workingDir} -z ${url.protocol}//localhost:${url.port} -o ${URI.parse(workspaceFolder?.uri ?? settings.workingDir).fsPath}`);
+
+	// Receive ZMQ message
+	const [msg] = await sock.receive();
+
+	// Wait for exit
+	await execProm;
 
 	// Parse result
 	let res;
@@ -210,10 +230,10 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 							message: conflict.description
 						};
 					}) as NonEmpty<Diagnostic[]>;
-			return diagnostics;
-		case 'Success':
-			return null;
-		case 'Error':
+			return left(diagnostics);
+		case "Success":
+			return right(res.topology);
+		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}
 }

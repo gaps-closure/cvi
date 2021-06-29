@@ -4,12 +4,14 @@
 
 - nodejs
 - npm
+- python3.8
 - libzmq
 
 ## Quick start
 
 ```bash
 npm install
+python3 -m pip install -r conflict-analyzer/requirements.txt
 ```
 
 Press `f5` to build and open the extension in a new window. 

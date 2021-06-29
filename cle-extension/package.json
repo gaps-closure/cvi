@@ -46,7 +46,27 @@
 				},
 				"vscle.zmqURI": {
 					"type": "string",
+					"default": "tcp://*:5555",
 					"description": "The ZMQ uri to use"
+				},
+				"vscle.conflictAnalyzerPath": {
+					"type": "string",
+					"default": "~/gaps/cvi/cle-extension/conflict-analyzer/conflict_analyzer.py",
+					"description": "Path to the conflict analyzer python script"
+				},
+				"vscle.prebuild": {
+					"type": "string",
+					"description": "Prebuild command which runs once per source file.\nEnvironment variable $SRC_FILE will be set to the file path.\nEnvironment variable $WORKING_DIR will be set to the working directory path "
+				},
+				"vscle.workingDir": {
+					"type": "string",
+					"default": "./annotated-working/",
+					"description": "Directory to store temporary build files"
+				},
+				"vscle.pythonPath": {
+					"type": "string",
+					"default": "python3",
+					"description": "python3 executable"
 				}
 			}
 		}
@@ -77,6 +97,7 @@
 	},
 	"dependencies": {
 		"dotenv": "^10.0.0",
+		"fp-ts": "^2.10.5",
 		"vscode-languageclient": "^7.0.0",
 		"vscode-languageserver": "^7.0.0",
 		"vscode-languageserver-textdocument": "^1.0.1",
