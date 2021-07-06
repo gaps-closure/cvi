@@ -10,5 +10,6 @@
     "typescript.tsc.autoDetect": "off",
     "cleLanguageServer.trace.server": "verbose",
     "python.linting.mypyEnabled": true,
-    "python.linting.enabled": true
+    "python.linting.enabled": true,
+    "python.formatting.provider": "autopep8"
 }

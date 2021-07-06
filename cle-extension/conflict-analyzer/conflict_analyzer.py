@@ -16,6 +16,7 @@ class EnclaveAssignment:
     level: str
     line: str
 
+
 @dataclass
 class Topology:
     source_path: str
@@ -23,14 +24,17 @@ class Topology:
     global_scoped_vars: List[EnclaveAssignment]
     functions: List[EnclaveAssignment]
 
+
 @dataclass
 class Source:
     file: str
     line: int
     character: Optional[int] = None
 
+
 Remedy = str
 ConflictIdentifier = str
+
 
 @dataclass
 class Conflict:
@@ -38,6 +42,7 @@ class Conflict:
     description: str
     sources: List[Source]
     remedies: List[Remedy]
+
 
 @dataclass
 class AnalyzerError:
@@ -48,117 +53,110 @@ class AnalyzerError:
 
 @dataclass
 class ConflictResult:
-    result: Literal["Conflict"] 
+    result: Literal["Conflict"]
     conflicts: List[Conflict]
+
 
 @dataclass
 class ErrorResult:
     result: Literal["Error"]
-    errors: List[AnalyzerError]  
+    errors: List[AnalyzerError]
+
 
 @dataclass
 class SuccessResult:
     result: Literal["Success"]
-    topology: Topology
+    topology: Optional[Topology]
+
 
 AnalyzerResult = Union[ConflictResult, ErrorResult, SuccessResult]
 FileInfo = Tuple[Path, bytes]
 
+
 @dataclass
 class Args:
-    cle_map_file: Path
-    ll_file: Path
+    src_files: List[Path]
     output_dir: Path
-    pdg_file: Path
     zmq_uri: Optional[str]
 
-def conflict_analyzer(cle_map_file: FileInfo, ll_file: FileInfo, pdg_file: FileInfo) -> AnalyzerResult:
-    conflict = Conflict(name="Unresolvable Data Conflict", 
-                        description="Cannot assign variable to both levels PURPLE and ORANGE", 
-                        sources=[Source("test/example1.c", 1)],
+
+return_conflict = False
+
+
+def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
+    conflict = Conflict(name="Unresolvable Data Conflict",
+                        description="Cannot assign variable to both levels PURPLE and ORANGE",
+                        sources=[
+                            Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", 42)],
                         remedies=[])
-    return ConflictResult(result="Conflict", conflicts=[conflict])
+    if return_conflict:
+        return ConflictResult(result="Conflict", conflicts=[conflict])
+    topology = Topology(
+        "./refactored",
+        [
+            "purple",
+            "orange"
+        ],
+        [],
+        [
+            EnclaveAssignment(
+                "calc_ewma",
+                "purple",
+                "12"
+            ),
+            EnclaveAssignment(
+                "get_a",
+                "orange",
+                "19"
+            ),
+            EnclaveAssignment(
+                "get_b",
+                "purple",
+                "29"
+            ),
+            EnclaveAssignment(
+                "ewma_main",
+                "purple",
+                "39"
+            ),
+            EnclaveAssignment(
+                "main",
+                "purple",
+                "56"
+            )
+        ]
+    )
+    return SuccessResult("Success", topology)
 
 
 def get_args() -> Args:
     parser = argparse.ArgumentParser(description="CLOSURE Conflict analyzer")
-    parser.add_argument("--cle-map-file", "-c", type=Path, required=False)
-    parser.add_argument("--ll-file", "-l", type=Path, required=False)
-    parser.add_argument("--pdg-file", "-p", type=Path, required=False)
-    parser.add_argument("--output-dir", "-o", type=Path, required=True)
+    parser.add_argument("--files", "-f",  type=Path, required=False)
     parser.add_argument("--zmq-uri", "-z", nargs='?', type=str, required=False)
-    parser.add_argument("--working-dir", "-w", type=Path, required=False)
+    parser.add_argument("--output-dir", "-o", nargs='?',
+                        type=Path, required=False)
 
     args = parser.parse_args()
 
-    def validate_path(path: Optional[Path], name: str, dir: bool = False) -> Path:
-        if(not path):
-           print(f"Could not find {name} file", file=sys.stderr) 
-           exit(1)
-
-        exists = path.exists() 
-        if(not exists):
-           print(f"{name} file does not exist: {path}", file=sys.stderr) 
-           exit(1)
-
-        validtype = path.is_dir() == dir 
-        if(not validtype):
-           print(f"{path} is not a {'directory' if path.is_dir() else 'file'}", file=sys.stderr) 
-           exit(1)
-
-        return path 
-    
-
+    src_files: List[Path] = args.files
     zmq_uri: Optional[str] = args.zmq_uri if 'zmq_uri' in args else None
-    working_dir: Optional[Path] = args.working_dir if 'working_dir' in args else None
-    output_dir: Path = args.output_dir
-    cle_map_file: Optional[Path] = None
-    ll_file: Optional[Path] = None
-    pdg_file: Optional[Path] = None
+    output_dir: Path = args.output_dir if 'output_dir' in args and args.output_dir is not None else Path(
+        '.')
 
-    if working_dir:
-        for file in os.listdir(working_dir):
-            full_path = Path(working_dir) / file
-            if file.endswith('.all.clemap.json'):
-                cle_map_file = full_path 
-                continue
-            elif file.endswith('_all.ll'):
-                ll_file = full_path 
-                continue
-            elif file.endswith('.main.dot'):
-                pdg_file = full_path 
-                continue
-    else:
-        cle_map_file = args.cle_map_file
-        ll_file = args.ll_file
-        pdg_file = args.pdg_file
-
-    cle_map: Path = validate_path(cle_map_file, "CLE map JSON")
-    ll: Path = validate_path(ll_file, "LLVM")
-    pdg: Path = validate_path(pdg_file, "PDG dot")
-    output: Path = validate_path(output_dir, "Output directory", True)
-
-    return Args(cle_map, ll, output, pdg, zmq_uri)
-
-        
-
+    return Args(src_files, output_dir, zmq_uri)
 
 
 def main() -> None:
 
-    cle_map_file, ll_file, output_dir, pdg_file, zmq_uri = astuple(get_args())
+    args = get_args()
+    src_files = args.src_files
+    output_dir = args.output_dir
+    zmq_uri = args.zmq_uri
 
-    with open(cle_map_file, 'rb') as f:
-        cle_map_src = f.read()
-    with open(ll_file, 'rb') as f:
-        ll_src = f.read() 
-    with open(pdg_file, 'rb') as f:
-        pdg_src = f.read()
-
-    res = conflict_analyzer((cle_map_file, cle_map_src), (ll_file, ll_src), (pdg_file, pdg_src))
+    res = conflict_analyzer(src_files)
 
     def to_camel_case(items: List[Tuple[str, Any]]) -> Dict[str, Any]:
-        return { inflection.camelize(k, False): v for (k, v) in items }
+        return {inflection.camelize(k, False): v for (k, v) in items}
 
     if zmq_uri:
         context = zmq.Context()
@@ -167,26 +165,30 @@ def main() -> None:
         socket.send_json(asdict(res, dict_factory=to_camel_case))
         print(f"Analyzer results sent to ZMQ URI {zmq_uri}", file=sys.stderr)
         socket.disconnect(zmq_uri)
- 
 
     if isinstance(res, ConflictResult):
         def print_trace(conflict: Conflict) -> None:
-            print(f"{conflict.name}: {conflict.description}", file=sys.stderr) 
+            print(f"{conflict.name}: {conflict.description}", file=sys.stderr)
             for source in conflict.sources:
-                print(f"\tat {source.file}:{source.line}{':' + str(source.character) if source.character else ''}")
+                print(
+                    f"\tat {source.file}:{source.line}{':' + str(source.character) if source.character else ''}")
 
         for conflict in res.conflicts:
             print_trace(conflict)
     elif isinstance(res, ErrorResult):
         for error in res.errors:
-            print(f"Error: {error.err_message} (ERRNO: {error.errno}). {error.custom_message}", file=sys.stderr)
+            print(
+                f"Error: {error.err_message} (ERRNO: {error.errno}). {error.custom_message}", file=sys.stderr)
     else:
-        output_path = Path(output_dir) / 'topology.json'
-        print(f"Success! Writing to {output_path}")
-        with open(output_path) as top:
-            top.write(json.dumps(asdict(res.topology, dict_factory=to_camel_case), indent=2))
+        if res.topology:
+            output_path = output_dir / 'topology.json'
+            print(f"Success! Writing to {output_path}")
+            with open(output_path, 'w') as top:
+                top.write(json.dumps(
+                    asdict(res.topology), indent=2))
+        else:
+            print("Conflict analyzer success!")
+
 
 if __name__ == '__main__':
     main()
-
- 

@@ -39,9 +39,10 @@ let settings: Settings = {
 	sourceDirs: ['./annotated'],
 	workingDir: './.cle-work/',
 	zmqURI: 'tcp://*:5555',
-	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py'
+	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py',
+	outputPath: '.'
 };
-
+let cachedTopology: Topology | null = null;
 connection.onInitialize((params: InitializeParams) => {
 	const result: InitializeResult = {
 		capabilities: {
@@ -121,12 +122,15 @@ connection.onExecuteCommand(async params => {
 			const res = await analyze(files as NonEmpty<string[]>);
 			switch (res._tag) {
 				case "Left":
-					for(const diagnostic of res.left) {
+					for (const diagnostic of res.left) {
 						const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
 						connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
 					}
 					break;
 				default:
+					if (res.right) {
+						cachedTopology = res.right;
+					}
 					connection.window.showInformationMessage('Conflict Analysis successful');
 			}
 		} catch (e) {
@@ -136,19 +140,26 @@ connection.onExecuteCommand(async params => {
 	}
 });
 
-async function readTopologyJSON() {
+async function readTopologyJSON(): Promise<Topology | null> {
 	const readFileAsync = promisify(readFile);
-	const buf = await readFileAsync("./topology.json");
-	return JSON.parse(buf.toString()) as Topology;
+	let top;
+	try {
+		const buf = await readFileAsync(path.join(settings.outputPath, "/topology.json"));
+		top = JSON.parse(buf.toString()) as Topology;
+	} catch (e) {
+		top = cachedTopology;
+	}
+	return top;
 }
 
 connection.onCodeLens(async params => {
 	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
 	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
-	const { dir: textDocDir } = path.parse(fullTextDocPath); 
+	const { dir: textDocDir } = path.parse(fullTextDocPath);
 	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
 	if (matchedSourceDir) {
 		const top = await readTopologyJSON();
+		if (!top) return [];
 		const assignments = [...top.global_scoped_vars, ...top.functions];
 		return assignments.map(a => {
 			const line = parseInt(a.line);
@@ -165,13 +176,13 @@ connection.onCodeLens(async params => {
 });
 
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
-	: Promise<Either<NonEmpty<Diagnostic[]>, Topology>> {
-		
+	: Promise<Either<NonEmpty<Diagnostic[]>, Topology | null>> {
+
 	const execAsync = promisify(exec);
 
 	// Run prebuild task
 	if (settings.prebuild) {
-		for(const fn of filenames) {
+		for (const fn of filenames) {
 			await execAsync(settings.prebuild, {
 				env: {
 					// eslint-disable-next-line @typescript-eslint/naming-convention
@@ -186,10 +197,10 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	// Create ZMQ server
 	const url = new URL(settings.zmqURI);
 	const sock = new zmq.Reply;
-	await sock.bind(settings.zmqURI); 
+	await sock.bind(settings.zmqURI);
 
 	// Run conflict analyzer python file
-	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -w ${settings.workingDir} -z ${url.protocol}//localhost:${url.port} -o ${URI.parse(workspaceFolder?.uri ?? settings.workingDir).fsPath}`);
+	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -z ${url.protocol}//localhost:${url.port}`);
 
 	// Receive ZMQ message
 	const [msg] = await sock.receive();
@@ -227,12 +238,13 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 							range: Range.create(
 								Position.create(conflict.source.line, Number.MAX_VALUE),
 								Position.create(conflict.source.line, Number.MAX_VALUE)),
-							message: conflict.description
+							message: conflict.description,
+							source: conflict.source.file
 						};
 					}) as NonEmpty<Diagnostic[]>;
 			return left(diagnostics);
 		case "Success":
-			return right(res.topology);
+			return right(res.topology ?? null);
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}

@@ -98,4 +98,4 @@ export interface AnalyzerError {
 export type AnalyzerResult
     = { result: 'Conflict', conflicts: NonEmpty<Conflict[]> }
     | { result: 'Error', errors: NonEmpty<AnalyzerError[]> }
-    | { result: 'Success', topology: Topology };
+    | { result: 'Success', topology?: Topology };
