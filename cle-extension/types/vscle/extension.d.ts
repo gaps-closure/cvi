@@ -34,5 +34,10 @@ export interface Settings {
     /**
      * Directory to store work in. Defaults to '.cle-work/'
      */
-    workingDir: FilePath
+    workingDir: FilePath,
+
+    /**
+     * Output path for topology.json.
+     */
+    outputPath: FilePath,
 }

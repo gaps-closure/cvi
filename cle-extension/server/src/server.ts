@@ -39,7 +39,8 @@ let settings: Settings = {
 	sourceDirs: ['./annotated'],
 	workingDir: './.cle-work/',
 	zmqURI: 'tcp://*:5555',
-	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py'
+	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py',
+	outputPath: '.'
 };
 
 connection.onInitialize((params: InitializeParams) => {
@@ -136,9 +137,9 @@ connection.onExecuteCommand(async params => {
 	}
 });
 
-async function readTopologyJSON() {
+async function readTopologyJSON(): Promise<Topology> {
 	const readFileAsync = promisify(readFile);
-	const buf = await readFileAsync("./topology.json");
+	const buf = await readFileAsync(path.join(settings.outputPath, "/topology.json"));
 	return JSON.parse(buf.toString()) as Topology;
 }
 
@@ -165,7 +166,7 @@ connection.onCodeLens(async params => {
 });
 
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
-	: Promise<Either<NonEmpty<Diagnostic[]>, Topology>> {
+	: Promise<Either<NonEmpty<Diagnostic[]>, Topology | null>> {
 		
 	const execAsync = promisify(exec);
 
@@ -189,7 +190,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	await sock.bind(settings.zmqURI); 
 
 	// Run conflict analyzer python file
-	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -w ${settings.workingDir} -z ${url.protocol}//localhost:${url.port} -o ${URI.parse(workspaceFolder?.uri ?? settings.workingDir).fsPath}`);
+	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -z ${url.protocol}//localhost:${url.port}`);
 
 	// Receive ZMQ message
 	const [msg] = await sock.receive();
@@ -227,12 +228,13 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 							range: Range.create(
 								Position.create(conflict.source.line, Number.MAX_VALUE),
 								Position.create(conflict.source.line, Number.MAX_VALUE)),
-							message: conflict.description
+							message: conflict.description,
+							source: conflict.source.file
 						};
 					}) as NonEmpty<Diagnostic[]>;
 			return left(diagnostics);
 		case "Success":
-			return right(res.topology);
+			return right(res.topology ?? null);
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}

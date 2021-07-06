@@ -66,96 +66,38 @@ FileInfo = Tuple[Path, bytes]
 
 @dataclass
 class Args:
-    cle_map_file: Path
-    ll_file: Path
+    src_files: List[Path]
     output_dir: Path
-    pdg_file: Path
     zmq_uri: Optional[str]
 
-def conflict_analyzer(cle_map_file: FileInfo, ll_file: FileInfo, pdg_file: FileInfo) -> AnalyzerResult:
+def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
     conflict = Conflict(name="Unresolvable Data Conflict", 
                         description="Cannot assign variable to both levels PURPLE and ORANGE", 
-                        sources=[Source("test/example1.c", 1)],
+                        sources=[Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", 42)],
                         remedies=[])
     return ConflictResult(result="Conflict", conflicts=[conflict])
 
 
 def get_args() -> Args:
     parser = argparse.ArgumentParser(description="CLOSURE Conflict analyzer")
-    parser.add_argument("--cle-map-file", "-c", type=Path, required=False)
-    parser.add_argument("--ll-file", "-l", type=Path, required=False)
-    parser.add_argument("--pdg-file", "-p", type=Path, required=False)
-    parser.add_argument("--output-dir", "-o", type=Path, required=True)
+    parser.add_argument("--files", "-f",  type=Path, required=False)
     parser.add_argument("--zmq-uri", "-z", nargs='?', type=str, required=False)
-    parser.add_argument("--working-dir", "-w", type=Path, required=False)
+    parser.add_argument("--output-dir", "-o", nargs='?', type=Path, required=False)
 
     args = parser.parse_args()
 
-    def validate_path(path: Optional[Path], name: str, dir: bool = False) -> Path:
-        if(not path):
-           print(f"Could not find {name} file", file=sys.stderr) 
-           exit(1)
-
-        exists = path.exists() 
-        if(not exists):
-           print(f"{name} file does not exist: {path}", file=sys.stderr) 
-           exit(1)
-
-        validtype = path.is_dir() == dir 
-        if(not validtype):
-           print(f"{path} is not a {'directory' if path.is_dir() else 'file'}", file=sys.stderr) 
-           exit(1)
-
-        return path 
-    
-
+    src_files: List[Path] = args.files 
     zmq_uri: Optional[str] = args.zmq_uri if 'zmq_uri' in args else None
-    working_dir: Optional[Path] = args.working_dir if 'working_dir' in args else None
-    output_dir: Path = args.output_dir
-    cle_map_file: Optional[Path] = None
-    ll_file: Optional[Path] = None
-    pdg_file: Optional[Path] = None
+    output_dir: Path = args.output_dir if 'output_dir' in args else Path('.')
 
-    if working_dir:
-        for file in os.listdir(working_dir):
-            full_path = Path(working_dir) / file
-            if file.endswith('.all.clemap.json'):
-                cle_map_file = full_path 
-                continue
-            elif file.endswith('_all.ll'):
-                ll_file = full_path 
-                continue
-            elif file.endswith('.main.dot'):
-                pdg_file = full_path 
-                continue
-    else:
-        cle_map_file = args.cle_map_file
-        ll_file = args.ll_file
-        pdg_file = args.pdg_file
-
-    cle_map: Path = validate_path(cle_map_file, "CLE map JSON")
-    ll: Path = validate_path(ll_file, "LLVM")
-    pdg: Path = validate_path(pdg_file, "PDG dot")
-    output: Path = validate_path(output_dir, "Output directory", True)
-
-    return Args(cle_map, ll, output, pdg, zmq_uri)
-
-        
-
+    return Args(src_files, output_dir, zmq_uri)
 
 
 def main() -> None:
 
-    cle_map_file, ll_file, output_dir, pdg_file, zmq_uri = astuple(get_args())
+    src_files, output_dir, zmq_uri = astuple(get_args())
 
-    with open(cle_map_file, 'rb') as f:
-        cle_map_src = f.read()
-    with open(ll_file, 'rb') as f:
-        ll_src = f.read() 
-    with open(pdg_file, 'rb') as f:
-        pdg_src = f.read()
-
-    res = conflict_analyzer((cle_map_file, cle_map_src), (ll_file, ll_src), (pdg_file, pdg_src))
+    res = conflict_analyzer(src_files)
 
     def to_camel_case(items: List[Tuple[str, Any]]) -> Dict[str, Any]:
         return { inflection.camelize(k, False): v for (k, v) in items }
