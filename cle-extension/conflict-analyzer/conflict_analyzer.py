@@ -102,27 +102,27 @@ def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
             EnclaveAssignment(
                 "calc_ewma",
                 "purple",
-                "12"
+                "11"
             ),
             EnclaveAssignment(
                 "get_a",
                 "orange",
-                "19"
+                "18"
             ),
             EnclaveAssignment(
                 "get_b",
                 "purple",
-                "29"
+                "26"
             ),
             EnclaveAssignment(
                 "ewma_main",
                 "purple",
-                "39"
+                "34"
             ),
             EnclaveAssignment(
                 "main",
                 "purple",
-                "56"
+                "49"
             )
         ]
     )

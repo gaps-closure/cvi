@@ -177,7 +177,6 @@ connection.onCodeLens(async params => {
 
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	: Promise<Either<NonEmpty<Diagnostic[]>, Topology | null>> {
-
 	const execAsync = promisify(exec);
 
 	// Run prebuild task
