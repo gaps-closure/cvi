@@ -199,7 +199,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	await sock.bind(settings.zmqURI);
 
 	// Run conflict analyzer python file
-	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -z ${url.protocol}//localhost:${url.port}`);
+	const execProm = execAsync(`${settings.pythonPath ?? 'python3'} ${settings.conflictAnalyzerPath} -z ${url.protocol}//localhost:${url.port} -f ${filenames[0]}`);
 
 	// Receive ZMQ message
 	const [msg] = await sock.receive();
