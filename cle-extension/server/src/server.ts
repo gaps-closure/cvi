@@ -10,7 +10,9 @@ import {
 	Position,
 	Range,
 	WorkspaceFolder,
-	ClientCapabilities
+	ClientCapabilities,
+	Color,
+	DocumentHighlightKind
 } from 'vscode-languageserver/node';
 
 import {
@@ -28,7 +30,7 @@ import { NonEmpty } from '../../types/vscle/util';
 import { exec } from 'child_process';
 import { URL } from 'url';
 import { Either, left, right } from 'fp-ts/lib/Either';
-import { Location } from 'vscode';
+import { functionDefinitions, functionName, parseCFile } from './parser';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -55,6 +57,13 @@ connection.onInitialize((params: InitializeParams) => {
 				resolveProvider: false
 			},
 			hoverProvider: true,
+			semanticTokensProvider: {
+				legend: {
+					tokenTypes: ["function", "regexp"],
+					tokenModifiers: [],
+				},
+				full: true,
+			},
 			workspace: {
 				workspaceFolders: {
 					supported: true
@@ -75,7 +84,6 @@ connection.onInitialized(async () => {
 	// Sync settings
 	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
 });
-
 connection.onDidChangeConfiguration(async () => {
 	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
 });
@@ -163,19 +171,91 @@ connection.onCodeLens(async params => {
 	if (matchedSourceDir) {
 		const top = await readTopologyJSON();
 		if (!top) return [];
-		const assignments = [...top.global_scoped_vars, ...top.functions];
-		return assignments.map(a => {
-			const line = parseInt(a.line);
-			return {
-				range: Range.create(Position.create(line, 0), Position.create(line, 0)),
-				command: {
-					title: a.level,
-					command: ''
+		const assignments = top.functions;
+		// const assignments = [...top.global_scoped_vars, ...top.functions];
+		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
+		const defs = functionDefinitions(tree);
+		return assignments
+			.map(({ name, level }) => 
+				({ def: defs.find(def => functionName(def).toString() == name), level }))
+			.filter(x => x)
+			.map(({ def, level }) => {
+				// SAFETY: see filter function above
+				const startLine = def!.start.line;
+				const startChar = def!.start.charPositionInLine;
+				const endLine = def!.stop?.line ?? startLine;
+				const endChar = def!.stop?.charPositionInLine ?? startChar;
+				return {
+					range: Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar)),
+					command: {
+						title: level,
+						command: ''
+					}
 				}
-			};
-		});
+			});
 	}
 	return [];
+});
+
+connection.languages.semanticTokens.on(async params => {
+	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
+	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
+	const { dir: textDocDir } = path.parse(fullTextDocPath);
+	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
+	const defaultResponse = { data: [] };
+	if (matchedSourceDir) {
+		const top = await readTopologyJSON();
+		if (!top) return defaultResponse;
+		const assignments = top.functions;
+		// const assignments = [...top.global_scoped_vars, ...top.functions];
+		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
+		const defs = functionDefinitions(tree);
+		const levelMap = new Map<string, number>();
+		let i = 0;
+		for(const level of top.levels) {
+			if(!levelMap.has(level) && i < 2) {
+				levelMap.set(level, i++);
+			}
+		}
+		return {
+			data: assignments
+					.map(({ name, level }) => 
+						({ def: defs.find(def => functionName(def).toString() == name), level }))
+					.filter(x => x)
+					.flatMap(({ def, level }) => {
+						// SAFETY: see filter function above
+						const {a: startIdx, b: endIdx} = def!.sourceInterval;
+						const tokens = tokenStream.getRange(startIdx, endIdx);
+						return tokens.map(tok => {
+							return {
+								startChar: tok.charPositionInLine,
+								length: tok.text?.length ?? 0,
+								line: tok.line,
+								level,
+								tok,
+							}; 
+						});
+					})
+					.sort((a, b) => {
+						if (a.line == b.line) 
+							return a.startChar - b.startChar;
+						else
+							return a.line - b.line;
+					})
+					.flatMap(({ line, startChar, length, tok, level }, i, arr) => {
+						if (i == 0) {
+							return [line - 1, startChar, length, 0, 0];
+						}
+						const last = arr[i - 1];
+						const deltaLine = line - last.line;
+						const deltaChar = deltaLine != 0 ? startChar : startChar - (last.startChar); 
+						const tokIdx = levelMap.get(level);
+						return [deltaLine, deltaChar, length, tokIdx ?? -1, 0];
+					})
+		};
+	}
+	return defaultResponse;
+
 });
 
 connection.onTypeDefinition(async params => {

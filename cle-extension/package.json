@@ -75,14 +75,25 @@
 					"description": "Directory for topology.json"
 				}
 			}
-		}
+		},
+		"semanticTokenTypes": [
+			{
+			  "id": "enclave0",
+			  "superType": "type"
+			},
+			{
+			  "id": "enclave1",
+			  "superType": "type"
+			}
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b",
+		"compile": "tsc -b && npm run antlr4ts",
 		"watch": "tsc -b -w",
 		"pretest": "npm run compile",
 		"lint": "eslint src --ext ts",
+		"antlr4ts": "antlr4ts -visitor server/src/C.g4 -depend",
 		"test": "node test/out/zmqtest/zmqtest.js"
 	},
 	"devDependencies": {
@@ -92,16 +103,21 @@
 		"@types/vscode": "^1.52.0",
 		"@typescript-eslint/eslint-plugin": "^4.26.0",
 		"@typescript-eslint/parser": "^4.26.0",
+		"antlr4ts": "^0.5.0-alpha.4",
+		"antlr4ts-cli": "^0.5.0-alpha.4",
 		"concurrently": "^6.2.0",
 		"eslint": "^7.27.0",
 		"generator-code": "^1.5.0",
 		"glob": "^7.1.7",
 		"mocha": "^8.4.0",
+		"ts-node": "^10.1.0",
 		"typescript": "^4.3.2",
 		"vscode-test": "^1.5.2",
 		"yo": "^4.2.0"
 	},
 	"dependencies": {
+		"@types/antlr4": "^4.7.2",
+		"antlr4": "^4.9.2",
 		"dotenv": "^10.0.0",
 		"fp-ts": "^2.10.5",
 		"vscode-languageclient": "^7.0.0",

@@ -6,6 +6,7 @@
 - npm
 - python3.8
 - libzmq
+- java
 
 ## Quick start
 

@@ -6,3 +6,4 @@ build/
 .vscode-test/
 *.vsix
 .mypy_cache/
+.antlr/
