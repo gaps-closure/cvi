@@ -12,7 +12,8 @@ import {
 	WorkspaceFolder,
 	ClientCapabilities,
 	Color,
-	DocumentHighlightKind
+	DocumentHighlightKind,
+	NotificationType
 } from 'vscode-languageserver/node';
 
 import {
@@ -59,7 +60,7 @@ connection.onInitialize((params: InitializeParams) => {
 			hoverProvider: true,
 			semanticTokensProvider: {
 				legend: {
-					tokenTypes: ["function", "regexp"],
+					tokenTypes: ["enclave0", "enclave1"],
 					tokenModifiers: [],
 				},
 				full: true,
@@ -120,6 +121,7 @@ async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 connection.onExecuteCommand(async params => {
 	if (params.command === 'vscle.startConflictAnalyzer' && workspaceFolder) {
 		try {
+			cachedTopology = null;
 			// Get all c files from sourceDirs in settings
 			const unflattened
 				= await Promise.all(
@@ -153,12 +155,15 @@ connection.onExecuteCommand(async params => {
 
 async function readTopologyJSON(): Promise<Topology | null> {
 	const readFileAsync = promisify(readFile);
-	let top;
+	let top = cachedTopology;
+	if(top) {
+		return top;
+	}
 	try {
 		const buf = await readFileAsync(path.join(settings.outputPath, "/topology.json"));
 		top = JSON.parse(buf.toString()) as Topology;
 	} catch (e) {
-		top = cachedTopology;
+		connection.console.error(e);
 	}
 	return top;
 }
@@ -177,8 +182,8 @@ connection.onCodeLens(async params => {
 		const defs = functionDefinitions(tree);
 		return assignments
 			.map(({ name, level }) => 
-				({ def: defs.find(def => functionName(def).toString() == name), level }))
-			.filter(x => x)
+				({ def: defs.find(def => functionName(def).toString() == name.trim()), level }))
+			.filter(x => x != null && x != undefined)
 			.map(({ def, level }) => {
 				// SAFETY: see filter function above
 				const startLine = def!.start.line;
@@ -194,6 +199,7 @@ connection.onCodeLens(async params => {
 				}
 			});
 	}
+
 	return [];
 });
 
@@ -212,7 +218,7 @@ connection.languages.semanticTokens.on(async params => {
 		const defs = functionDefinitions(tree);
 		const levelMap = new Map<string, number>();
 		let i = 0;
-		for(const level of top.levels) {
+		for(const { level } of assignments) {
 			if(!levelMap.has(level) && i < 2) {
 				levelMap.set(level, i++);
 			}
@@ -220,8 +226,8 @@ connection.languages.semanticTokens.on(async params => {
 		return {
 			data: assignments
 					.map(({ name, level }) => 
-						({ def: defs.find(def => functionName(def).toString() == name), level }))
-					.filter(x => x)
+						({ def: defs.find(def => functionName(def).toString() == name.trim()), level }))
+					.filter(x => x != null && x != undefined)
 					.flatMap(({ def, level }) => {
 						// SAFETY: see filter function above
 						const {a: startIdx, b: endIdx} = def!.sourceInterval;
@@ -255,7 +261,6 @@ connection.languages.semanticTokens.on(async params => {
 		};
 	}
 	return defaultResponse;
-
 });
 
 connection.onTypeDefinition(async params => {
@@ -351,7 +356,6 @@ connection.onHover(async params => {
 	}
 	return null;
 });
-
 async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	: Promise<Either<NonEmpty<Diagnostic[]>, Topology | null>> {
 	const execAsync = promisify(exec);
@@ -381,6 +385,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 	// Receive ZMQ message
 	const [msg] = await sock.receive();
 
+	sock.close();
 	// Wait for exit
 	await execProm;
 
@@ -412,7 +417,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 						}
 						return {
 							range: Range.create(
-								Position.create(conflict.source.line, Number.MAX_VALUE),
+								Position.create(conflict.source.line, 0),
 								Position.create(conflict.source.line, Number.MAX_VALUE)),
 							message: conflict.description,
 							source: conflict.source.file
@@ -424,6 +429,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}
+	
 }
 
 // Listen on the connection

@@ -80,15 +80,29 @@ class Args:
     zmq_uri: Optional[str]
 
 
-return_conflict = False
+return_conflict = True
 
 
 def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
-    conflict = Conflict(name="Unresolvable Data Conflict",
-                        description="Cannot assign variable to both levels PURPLE and ORANGE",
-                        sources=[
-                            Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", 42)],
-                        remedies=[])
+    src_file = src_files[0]
+    name = src_file.parts[-1]
+    if name == 'incorrect_json.c':
+        conflict = Conflict(name="Incorrect JSON", description=
+            """Label 'ORANGE' has incorrect JSON:
+                rettaints is provided but argtaints and codtaints are missing""",
+            sources=[Source(str(src_file.absolute()), 7)],
+            remedies=["Add argtaints and codtaints to 'ORANGE'"])
+    elif name == 'missing_json.c':
+        conflict = Conflict(name="Incorrect JSON", description=
+            """Label 'ORANGE' has missing JSON""",
+            sources=[Source(str(src_file.absolute()), 7)],
+            remedies=["Add JSON to label 'ORANGE'"])
+    else: 
+        conflict = Conflict(name="Unresolvable Data Conflict",
+                            description="Cannot assign variable to both levels PURPLE and ORANGE",
+                            sources=[
+                                Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", 42)],
+                            remedies=[])
     if return_conflict:
         return ConflictResult(result="Conflict", conflicts=[conflict])
     topology = Topology(
@@ -138,7 +152,7 @@ def get_args() -> Args:
 
     args = parser.parse_args()
 
-    src_files: List[Path] = args.files
+    src_files: List[Path] = [args.files]
     zmq_uri: Optional[str] = args.zmq_uri if 'zmq_uri' in args else None
     output_dir: Path = args.output_dir if 'output_dir' in args and args.output_dir is not None else Path(
         '.')

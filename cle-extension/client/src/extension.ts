@@ -11,7 +11,6 @@ let client: LanguageClient;
 
 // Called when extension is activated. See package.json "activationEvents"
 export function activate(context: ExtensionContext) {
-
 	// The server is implemented in node
 	let serverModule = context.asAbsolutePath(
 		path.join('server', 'out', 'server.js')
@@ -71,7 +70,9 @@ export function activate(context: ExtensionContext) {
 	}));
 
 	commands.executeCommand('vscle.startLanguageServer');
+	
 }
+
 
 export function deactivate(): Thenable<void> | undefined {
 	// Stop client

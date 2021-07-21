@@ -79,11 +79,13 @@
 		"semanticTokenTypes": [
 			{
 			  "id": "enclave0",
-			  "superType": "type"
+			  "superType": "type",
+			  "description": "Enclave 1"
 			},
 			{
 			  "id": "enclave1",
-			  "superType": "type"
+			  "superType": "type",
+			  "description": "Enclave 2"
 			}
 		]
 	},
