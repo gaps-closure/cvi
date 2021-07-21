@@ -25,7 +25,7 @@ import { readdir, readFile, stat } from 'fs';
 import { URI } from 'vscode-uri';
 import path = require('path');
 import { promisify } from 'util';
-import { Settings } from '../../types/vscle/extension';
+import { HighlightNotification, Settings } from '../../types/vscle/extension';
 import { AnalyzerResult, Topology } from '../../types/vscle/analyzer';
 import { NonEmpty } from '../../types/vscle/util';
 import { exec } from 'child_process';
@@ -54,17 +54,17 @@ connection.onInitialize((params: InitializeParams) => {
 			executeCommandProvider: {
 				commands: ['vscle.startConflictAnalyzer']
 			},
-			codeLensProvider: {
-				resolveProvider: false
-			},
+			// codeLensProvider: {
+				// resolveProvider: false
+			// },
 			hoverProvider: true,
-			semanticTokensProvider: {
-				legend: {
-					tokenTypes: ["enclave0", "enclave1"],
-					tokenModifiers: [],
-				},
-				full: true,
-			},
+			// semanticTokensProvider: {
+				// legend: {
+					// tokenTypes: ["enclave0", "enclave1"],
+					// tokenModifiers: [],
+				// },
+				// full: true,
+			// },
 			workspace: {
 				workspaceFolders: {
 					supported: true
@@ -143,6 +143,7 @@ connection.onExecuteCommand(async params => {
 				default:
 					if (res.right) {
 						cachedTopology = res.right;
+						sendTopology(res.right);
 					}
 					connection.window.showInformationMessage('Conflict Analysis successful');
 			}
@@ -156,7 +157,7 @@ connection.onExecuteCommand(async params => {
 async function readTopologyJSON(): Promise<Topology | null> {
 	const readFileAsync = promisify(readFile);
 	let top = cachedTopology;
-	if(top) {
+	if (top) {
 		return top;
 	}
 	try {
@@ -168,100 +169,40 @@ async function readTopologyJSON(): Promise<Topology | null> {
 	return top;
 }
 
-connection.onCodeLens(async params => {
-	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
+async function sendTopology(top: Topology) {
+	if(!currentTextDocument) return;
+	const fullTextDocPath = path.resolve(URI.parse(currentTextDocument.uri).fsPath);
 	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
 	const { dir: textDocDir } = path.parse(fullTextDocPath);
 	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
 	if (matchedSourceDir) {
-		const top = await readTopologyJSON();
-		if (!top) return [];
 		const assignments = top.functions;
 		// const assignments = [...top.global_scoped_vars, ...top.functions];
 		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
 		const defs = functionDefinitions(tree);
-		return assignments
-			.map(({ name, level }) => 
+		const levelMap = new Map<string, string>();
+		for (const { level } of assignments) {
+			const randomChan = () => Math.floor(Math.random()*192 + 64).toString(16);
+			if (!levelMap.has(level)) {
+				levelMap.set(level, '#' + randomChan() + randomChan() + randomChan() + "10");
+			}
+		}
+		assignments
+			.map(({ name, level }) =>
 				({ def: defs.find(def => functionName(def).toString() == name.trim()), level }))
 			.filter(x => x != null && x != undefined)
-			.map(({ def, level }) => {
+			.forEach(({ def, level }) => {
 				// SAFETY: see filter function above
 				const startLine = def!.start.line;
 				const startChar = def!.start.charPositionInLine;
 				const endLine = def!.stop?.line ?? startLine;
 				const endChar = def!.stop?.charPositionInLine ?? startChar;
-				return {
-					range: Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar)),
-					command: {
-						title: level,
-						command: ''
-					}
-				}
+				const range = Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar));
+				connection.sendNotification<HighlightNotification>(new NotificationType<HighlightNotification>("highlight"),
+					{ range, color: levelMap.get(level) ?? '#0000' });
 			});
 	}
-
-	return [];
-});
-
-connection.languages.semanticTokens.on(async params => {
-	const fullTextDocPath = path.resolve(URI.parse(params.textDocument.uri).fsPath);
-	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
-	const { dir: textDocDir } = path.parse(fullTextDocPath);
-	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
-	const defaultResponse = { data: [] };
-	if (matchedSourceDir) {
-		const top = await readTopologyJSON();
-		if (!top) return defaultResponse;
-		const assignments = top.functions;
-		// const assignments = [...top.global_scoped_vars, ...top.functions];
-		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
-		const defs = functionDefinitions(tree);
-		const levelMap = new Map<string, number>();
-		let i = 0;
-		for(const { level } of assignments) {
-			if(!levelMap.has(level) && i < 2) {
-				levelMap.set(level, i++);
-			}
-		}
-		return {
-			data: assignments
-					.map(({ name, level }) => 
-						({ def: defs.find(def => functionName(def).toString() == name.trim()), level }))
-					.filter(x => x != null && x != undefined)
-					.flatMap(({ def, level }) => {
-						// SAFETY: see filter function above
-						const {a: startIdx, b: endIdx} = def!.sourceInterval;
-						const tokens = tokenStream.getRange(startIdx, endIdx);
-						return tokens.map(tok => {
-							return {
-								startChar: tok.charPositionInLine,
-								length: tok.text?.length ?? 0,
-								line: tok.line,
-								level,
-								tok,
-							}; 
-						});
-					})
-					.sort((a, b) => {
-						if (a.line == b.line) 
-							return a.startChar - b.startChar;
-						else
-							return a.line - b.line;
-					})
-					.flatMap(({ line, startChar, length, tok, level }, i, arr) => {
-						if (i == 0) {
-							return [line - 1, startChar, length, 0, 0];
-						}
-						const last = arr[i - 1];
-						const deltaLine = line - last.line;
-						const deltaChar = deltaLine != 0 ? startChar : startChar - (last.startChar); 
-						const tokIdx = levelMap.get(level);
-						return [deltaLine, deltaChar, length, tokIdx ?? -1, 0];
-					})
-		};
-	}
-	return defaultResponse;
-});
+}
 
 connection.onTypeDefinition(async params => {
 	const line = params.position.line;
@@ -429,7 +370,7 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}
-	
+
 }
 
 // Listen on the connection

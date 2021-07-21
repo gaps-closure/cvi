@@ -1,3 +1,4 @@
+import { Range } from "vscode-languageserver-types";
 import { FilePath, NonEmpty, ZmqURI } from "./util";
 
 /**
@@ -40,4 +41,9 @@ export interface Settings {
      * Output path for topology.json.
      */
     outputPath: FilePath,
+}
+
+export interface HighlightNotification {
+    range: Range
+    color: string
 }

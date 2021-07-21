@@ -1,11 +1,13 @@
-import { ExtensionContext, commands, window, workspace } from 'vscode';
+import { ExtensionContext, commands, window, workspace, Range, Position } from 'vscode';
 import {
 	LanguageClient,
 	LanguageClientOptions,
+	NotificationType,
 	ServerOptions,
 	TransportKind,
 } from 'vscode-languageclient/node';
 import * as path from 'path';
+import { HighlightNotification } from '../../types/vscle/extension';
 
 let client: LanguageClient;
 
@@ -50,6 +52,21 @@ export function activate(context: ExtensionContext) {
 			clientOptions
 		);
 
+
+		client.onReady().then(() => {
+			// Handle highlight notification
+			client.onNotification(new NotificationType<HighlightNotification>("highlight"), params => {
+				const type = window.createTextEditorDecorationType({
+					backgroundColor: params.color,
+				});
+
+				for (const editor of window.visibleTextEditors) {
+					editor.setDecorations(type, [new Range(new Position(params.range.start.line, params.range.start.character), new Position(params.range.end.line, params.range.end.character))])
+				}
+			});
+
+		});
+
 		// Start the client. This will also launch the server
 		client.start();
 
@@ -70,7 +87,7 @@ export function activate(context: ExtensionContext) {
 	}));
 
 	commands.executeCommand('vscle.startLanguageServer');
-	
+
 }
 
 

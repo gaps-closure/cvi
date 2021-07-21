@@ -75,19 +75,7 @@
 					"description": "Directory for topology.json"
 				}
 			}
-		},
-		"semanticTokenTypes": [
-			{
-			  "id": "enclave0",
-			  "superType": "type",
-			  "description": "Enclave 1"
-			},
-			{
-			  "id": "enclave1",
-			  "superType": "type",
-			  "description": "Enclave 2"
-			}
-		]
+		}
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
