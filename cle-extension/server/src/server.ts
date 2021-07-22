@@ -11,7 +11,6 @@ import {
 	Range,
 	WorkspaceFolder,
 	ClientCapabilities,
-	Color,
 	DocumentHighlightKind,
 	NotificationType
 } from 'vscode-languageserver/node';
@@ -32,6 +31,7 @@ import { exec } from 'child_process';
 import { URL } from 'url';
 import { Either, left, right } from 'fp-ts/lib/Either';
 import { functionDefinitions, functionName, parseCFile } from './parser';
+import Color = require('color');
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -54,17 +54,7 @@ connection.onInitialize((params: InitializeParams) => {
 			executeCommandProvider: {
 				commands: ['vscle.startConflictAnalyzer']
 			},
-			// codeLensProvider: {
-				// resolveProvider: false
-			// },
 			hoverProvider: true,
-			// semanticTokensProvider: {
-				// legend: {
-					// tokenTypes: ["enclave0", "enclave1"],
-					// tokenModifiers: [],
-				// },
-				// full: true,
-			// },
 			workspace: {
 				workspaceFolders: {
 					supported: true
@@ -90,6 +80,9 @@ connection.onDidChangeConfiguration(async () => {
 });
 documents.onDidOpen(params => {
 	currentTextDocument = params.document;
+	if(cachedTopology) {
+		sendTopology(cachedTopology);
+	}
 });
 
 async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
@@ -180,12 +173,15 @@ async function sendTopology(top: Topology) {
 		// const assignments = [...top.global_scoped_vars, ...top.functions];
 		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
 		const defs = functionDefinitions(tree);
-		const levelMap = new Map<string, string>();
+		const levelSet = new Set<string>();
+		const levelMap = new Map<string, Color>();
 		for (const { level } of assignments) {
-			const randomChan = () => Math.floor(Math.random()*192 + 64).toString(16);
-			if (!levelMap.has(level)) {
-				levelMap.set(level, '#' + randomChan() + randomChan() + randomChan() + "10");
-			}
+			levelSet.add(level);
+		}
+		let i = 0;
+		for(const level of levelSet) {
+			levelMap.set(level, Color.hsl(i, 50, 65));
+			i += 360 / levelSet.size;	
 		}
 		assignments
 			.map(({ name, level }) =>
@@ -199,7 +195,7 @@ async function sendTopology(top: Topology) {
 				const endChar = def!.stop?.charPositionInLine ?? startChar;
 				const range = Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar));
 				connection.sendNotification<HighlightNotification>(new NotificationType<HighlightNotification>("highlight"),
-					{ range, color: levelMap.get(level) ?? '#0000' });
+					{ range, color: `${levelMap.get(level)?.hex()}30` ?? '#0000' });
 			});
 	}
 }
