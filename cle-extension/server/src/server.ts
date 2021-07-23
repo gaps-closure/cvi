@@ -9,9 +9,6 @@ import {
 	InitializeResult,
 	Position,
 	Range,
-	WorkspaceFolder,
-	ClientCapabilities,
-	DocumentHighlightKind,
 	NotificationType,
 	DidChangeConfigurationParams,
 	TextDocumentChangeEvent,
@@ -105,7 +102,8 @@ async function* settingsGen(configChange$: Stream<DidChangeConfigurationParams>)
 }
 
 
-async function* analyzerGen(executeCommand$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>): Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
+async function* analyzerGen(executeCommand$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>): 
+	Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
 	while (true) {
 		for await (const params of executeCommand$) {
 			if (params.command === 'vscle.startConflictAnalyzer') {
@@ -319,9 +317,7 @@ async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
 							};
 						}
 						return {
-							range: Range.create(
-								Position.create(conflict.source.line, 0),
-								Position.create(conflict.source.line, Number.MAX_VALUE)),
+							range: conflict.source.range,
 							message: conflict.description,
 							source: conflict.source.file
 						};

@@ -24,12 +24,20 @@ class Topology:
     global_scoped_vars: List[EnclaveAssignment]
     functions: List[EnclaveAssignment]
 
+@dataclass
+class Position:
+    line: int
+    character: int
+
+@dataclass
+class Range:
+    start: Position
+    end: Position
 
 @dataclass
 class Source:
     file: str
-    line: int
-    character: Optional[int] = None
+    range: Range
 
 
 Remedy = str
@@ -86,23 +94,11 @@ return_conflict = True
 def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
     src_file = src_files[0]
     name = src_file.parts[-1]
-    if name == 'incorrect_json.c':
-        conflict = Conflict(name="Incorrect JSON", description=
-            """Label 'ORANGE' has incorrect JSON:
-                rettaints is provided but argtaints and codtaints are missing""",
-            sources=[Source(str(src_file.absolute()), 7)],
-            remedies=["Add argtaints and codtaints to 'ORANGE'"])
-    elif name == 'missing_json.c':
-        conflict = Conflict(name="Incorrect JSON", description=
-            """Label 'ORANGE' has missing JSON""",
-            sources=[Source(str(src_file.absolute()), 7)],
-            remedies=["Add JSON to label 'ORANGE'"])
-    else: 
-        conflict = Conflict(name="Unresolvable Data Conflict",
-                            description="Cannot assign variable to both levels PURPLE and ORANGE",
-                            sources=[
-                                Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", 42)],
-                            remedies=[])
+    conflict = Conflict(name="Unresolvable Data Conflict",
+                        description="Cannot assign variable to both levels PURPLE and ORANGE",
+                        sources=[
+                            Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", Range(Position(42, 0), Position(42, 11)))],
+                        remedies=[])
     if return_conflict:
         return ConflictResult(result="Conflict", conflicts=[conflict])
     topology = Topology(
@@ -185,7 +181,7 @@ def main() -> None:
             print(f"{conflict.name}: {conflict.description}", file=sys.stderr)
             for source in conflict.sources:
                 print(
-                    f"\tat {source.file}:{source.line}{':' + str(source.character) if source.character else ''}")
+                    f"\tat {source.file}:{source.range.start.line}")
 
         for conflict in res.conflicts:
             print_trace(conflict)

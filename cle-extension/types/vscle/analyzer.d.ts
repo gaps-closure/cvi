@@ -1,20 +1,9 @@
+import { Range } from 'vscode-languageserver-types';
 import { NonEmpty, FilePath } from './util';
 /**
  * Parameters sent from the language server to the
  * conflict analyzer at its invocation.
  */
-export interface Start {
-    action: 'Start',
-    /**
-     * A list of string arguments, i.e. for logging
-     */
-    options: string[],
-    /**
-     * A list of filenames in the workspace
-     */
-    filenames: NonEmpty<FilePath[]>,
-}
-
 export interface EnclaveAssignment {
     name: string,
     level: string,
@@ -36,7 +25,9 @@ export interface Topology {
  * TODO: add more, perhaps turn into an enum
  */
 export type ConflictIdentifier
-    = 'Insufficient Enclaves'
+    = 'Invalid JSON'
+    | 'Undefined label'
+    | 'Insufficient Enclaves'
     | 'Missing Enclaves'
     | 'Unresolvable Control Conflict'
     | 'Unresolvable Data Conflict';
@@ -47,10 +38,11 @@ export type ConflictIdentifier
  */
 export type ConflictRemedy = string;
 
+
+
 export interface Source {
     file: FilePath
-    line: number,
-    character?: number
+    range: Range,
 }
 /**
  * Sent from the conflict analyzer to the server
