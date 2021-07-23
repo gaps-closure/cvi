@@ -12,7 +12,14 @@ import {
 	WorkspaceFolder,
 	ClientCapabilities,
 	DocumentHighlightKind,
-	NotificationType
+	NotificationType,
+	DidChangeConfigurationParams,
+	TextDocumentChangeEvent,
+	ExecuteCommandParams,
+	DefinitionParams,
+	Definition,
+	HoverParams,
+	Hover
 } from 'vscode-languageserver/node';
 
 import {
@@ -32,21 +39,21 @@ import { URL } from 'url';
 import { Either, left, right } from 'fp-ts/lib/Either';
 import { functionDefinitions, functionName, parseCFile } from './parser';
 import Color = require('color');
+import {
+	wrapListener,
+	combine,
+	map,
+	cache,
+	Stream,
+	wrapListenerWithReturn,
+	of,
+	cloneable,
+	clone
+} from './stream';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-let workspaceFolder: WorkspaceFolder | null = null;
-let capabilities: ClientCapabilities | null = null;
-let currentTextDocument: TextDocument | null = null;
-let settings: Settings = {
-	sourceDirs: ['./annotated'],
-	workingDir: './.cle-work/',
-	zmqURI: 'tcp://*:5555',
-	conflictAnalyzerPath: '/opt/closure/scripts/conflict_analyzer.py',
-	outputPath: '.'
-};
-let cachedTopology: Topology | null = null;
 connection.onInitialize((params: InitializeParams) => {
 	const result: InitializeResult = {
 		capabilities: {
@@ -60,11 +67,9 @@ connection.onInitialize((params: InitializeParams) => {
 					supported: true
 				}
 			},
-			typeDefinitionProvider: true
+			definitionProvider: true
 		}
 	};
-	workspaceFolder = params.workspaceFolders ? params.workspaceFolders[0] : null;
-	capabilities = params.capabilities;
 	return result;
 });
 
@@ -72,18 +77,113 @@ connection.onInitialized(async () => {
 	// Register for all configuration changes.
 	connection.client.register(DidChangeConfigurationNotification.type, undefined);
 
-	// Sync settings
-	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
+	// Setup streams 
+	const didOpen$ = cloneable(wrapListener(documents.onDidOpen));
+	const configChange$ = wrapListener(connection.onDidChangeConfiguration);
+	const settings$ = cloneable(settingsGen(configChange$));
+	const topologyRead$ = readTopologyGen(clone(didOpen$), cache(clone(settings$)));
+	const executeCommand$ = wrapListener(connection.onExecuteCommand);
+	const analysis$ = analyzerGen(executeCommand$, cache(clone(settings$)));
+	const topologyAnalysis$ = sendConflictsGen(analysis$);
+	const topology$ = combine(topologyRead$, topologyAnalysis$);
+	const textDoc$ = map(clone(didOpen$), params => params.document);
+	sendTopologyIter(topology$, cache(clone(settings$)), cache(textDoc$));
+	wrapListenerWithReturn(connection.onDefinition, def$ => definitionGen(def$, cache(clone(settings$))));
+	wrapListenerWithReturn(connection.onHover, hover$ => hoverGen(hover$, cache(clone(settings$))));
 });
-connection.onDidChangeConfiguration(async () => {
-	settings = (await connection.workspace.getConfiguration()).vscle as Settings;
-});
-documents.onDidOpen(params => {
-	currentTextDocument = params.document;
-	if(cachedTopology) {
-		sendTopology(cachedTopology);
+
+async function getSettings(): Promise<Settings> {
+	return (await connection.workspace.getConfiguration()).vscle as Settings;
+}
+async function* settingsGen(configChange$: Stream<DidChangeConfigurationParams>): Stream<Settings> {
+	yield await getSettings();
+	while (true) {
+		for await (const _ of configChange$) {
+			yield await getSettings();
+		}
 	}
-});
+}
+
+
+async function* analyzerGen(executeCommand$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>): Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
+	while (true) {
+		for await (const params of executeCommand$) {
+			if (params.command === 'vscle.startConflictAnalyzer') {
+				const settings = (await settings$.next()).value;
+				try {
+					const files
+						= (await Promise.all(
+							settings.sourceDirs.map(async dir =>
+								await getAllCLikeFiles(dir)))).flat();
+					if (files.length === 0) {
+						throw new Error('Empty number of source files');
+					}
+					// Give diagnostics back to user, otherwise show success message
+					yield await analyze(settings, files as NonEmpty<string[]>);
+				} catch (e) {
+					connection.window.showErrorMessage(e.message);
+					connection.console.error(e.message);
+				}
+			}
+		}
+	}
+}
+
+async function* sendConflictsGen(analysis$: Stream<Either<NonEmpty<Diagnostic[]>, Topology>>): Stream<Topology> {
+	while (true) {
+		for await (const res of analysis$) {
+			switch (res._tag) {
+				case "Left": {
+					for (const diagnostic of res.left) {
+						const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
+						connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
+					}
+					break;
+				}
+				default: {
+					yield res.right;
+				}
+			}
+		}
+	}
+}
+
+async function* readTopologyGen(didOpen$: Stream<TextDocumentChangeEvent<TextDocument>>, settings$: Stream<Settings>): Stream<Topology> {
+	while (true) {
+		for await (const _ of didOpen$) {
+			const settings = (await settings$.next()).value;
+			const top = await readTopologyJSON(settings);
+			if (top) {
+				yield top;
+			}
+		}
+	}
+}
+
+async function* definitionGen(definition$: Stream<DefinitionParams>, settings$: Stream<Settings>): Stream<Definition | null> {
+	while(true)	{
+		for await(const params of definition$) {
+			const settings = (await settings$.next()).value;
+			yield await makeDefinition(params, settings);
+		}
+	}
+}
+async function* hoverGen(hover$: Stream<HoverParams>, settings$: Stream<Settings>): Stream<Hover | null> {
+	while(true)	{
+		for await(const params of hover$) {
+			const settings = (await settings$.next()).value;
+			yield await makeHover(params, settings);
+		}
+	}
+}
+
+async function sendTopologyIter(top$: Stream<Topology>, settings$: Stream<Settings>, textDoc$: Stream<TextDocument>) {
+	for await (const top of top$) {
+		const settings = (await settings$.next()).value;
+		const textDoc = (await textDoc$.next()).value;
+		sendTopology(top, settings, textDoc);
+	}
+}
 
 async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 	const asnycReadDir = promisify(readdir);
@@ -110,49 +210,9 @@ async function getAllCLikeFiles(pathOrURI: string): Promise<string[]> {
 	return unflattened.flat();
 }
 
-
-connection.onExecuteCommand(async params => {
-	if (params.command === 'vscle.startConflictAnalyzer' && workspaceFolder) {
-		try {
-			cachedTopology = null;
-			// Get all c files from sourceDirs in settings
-			const unflattened
-				= await Promise.all(
-					settings.sourceDirs.map(async dir =>
-						await getAllCLikeFiles(dir)));
-			const files = unflattened.flat();
-			if (files.length === 0) {
-				throw new Error('Empty number of source files');
-			}
-			// Give diagnostics back to user, otherwise show success message
-			const res = await analyze(files as NonEmpty<string[]>);
-			switch (res._tag) {
-				case "Left":
-					for (const diagnostic of res.left) {
-						const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
-						connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
-					}
-					break;
-				default:
-					if (res.right) {
-						cachedTopology = res.right;
-						sendTopology(res.right);
-					}
-					connection.window.showInformationMessage('Conflict Analysis successful');
-			}
-		} catch (e) {
-			connection.window.showErrorMessage(e.message);
-			connection.console.error(e.message);
-		}
-	}
-});
-
-async function readTopologyJSON(): Promise<Topology | null> {
+async function readTopologyJSON(settings: Settings): Promise<Topology | null> {
 	const readFileAsync = promisify(readFile);
-	let top = cachedTopology;
-	if (top) {
-		return top;
-	}
+	let top = null;
 	try {
 		const buf = await readFileAsync(path.join(settings.outputPath, "/topology.json"));
 		top = JSON.parse(buf.toString()) as Topology;
@@ -162,8 +222,7 @@ async function readTopologyJSON(): Promise<Topology | null> {
 	return top;
 }
 
-async function sendTopology(top: Topology) {
-	if(!currentTextDocument) return;
+async function sendTopology(top: Topology, settings: Settings, currentTextDocument: TextDocument) {
 	const fullTextDocPath = path.resolve(URI.parse(currentTextDocument.uri).fsPath);
 	const fullSourceDirPaths = settings.sourceDirs.map(p => path.resolve(p));
 	const { dir: textDocDir } = path.parse(fullTextDocPath);
@@ -179,9 +238,9 @@ async function sendTopology(top: Topology) {
 			levelSet.add(level);
 		}
 		let i = 0;
-		for(const level of levelSet) {
+		for (const level of levelSet) {
 			levelMap.set(level, Color.hsl(i, 50, 65));
-			i += 360 / levelSet.size;	
+			i += 360 / levelSet.size;
 		}
 		assignments
 			.map(({ name, level }) =>
@@ -200,101 +259,8 @@ async function sendTopology(top: Topology) {
 	}
 }
 
-connection.onTypeDefinition(async params => {
-	const line = params.position.line;
-	const uri = URI.parse(params.textDocument.uri);
-	const readFileAsync = promisify(readFile);
-	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
-	let buf;
-	try {
-		buf = await readFileAsync(uri.fsPath);
-	} catch (e) {
-		connection.console.log(e);
-		return null;
-	}
-	const src = buf.toString();
-	const lines = src.split(/\n|\r\n/);
-	const labelRegex = /(#pragma cle) (begin |end )?(\w+)/.exec(lines[line]);
-	if (labelRegex) {
-		const label = labelRegex[3];
-		for (const file of files) {
-			let buf;
-			try {
-				buf = await readFileAsync(file);
-			} catch (e) {
-				connection.console.log(e);
-				continue;
-			}
-			const src = buf.toString();
-			const labelDefRegex = (new RegExp(`(#pragma cle def) ${label}(\\s+{(.*\\\\\\n)*.*})`, "g")).exec(src);
-			if (labelDefRegex) {
-				const index = labelDefRegex.index;
-				let count = 0;
-				let i = 0;
-				let lastNewline = 0;
-				for (; i < index; i++) {
-					if (/^(\n|\r\n)/.exec(src.slice(i))) {
-						count++;
-						lastNewline = i;
-					}
-				}
-				const charStart = index - lastNewline;
-				return {
-					uri: URI.parse(path.resolve(file)).toString(),
-					range: Range.create(Position.create(count, charStart),
-						Position.create(count, charStart + labelDefRegex[0].length))
-				};
-			}
-		}
-	}
-	return null;
-});
-
-connection.onHover(async params => {
-	const line = params.position.line;
-	const uri = URI.parse(params.textDocument.uri);
-	const readFileAsync = promisify(readFile);
-	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
-	let buf;
-	try {
-		buf = await readFileAsync(uri.fsPath);
-	} catch (e) {
-		connection.console.log(e);
-		return null;
-	}
-	const src = buf.toString();
-	const lines = src.split(/\n|\r\n/);
-	const labelRegex = /(#pragma cle) (begin |end )?(\w+)/.exec(lines[line]);
-	if (labelRegex) {
-		const label = labelRegex[3];
-		for (const file of files) {
-			let buf;
-			try {
-				buf = await readFileAsync(file);
-			} catch (e) {
-				connection.console.log(e);
-				continue;
-			}
-			const src = buf.toString();
-			const labelDefRegex = (new RegExp(`(#pragma cle def) ${label}(\\s+{(.*\\\\\\n)*.*})`, "g")).exec(src);
-			if (labelDefRegex) {
-				return {
-					contents: {
-						kind: "markdown",
-						value: [
-							"```c",
-							labelDefRegex[0],
-							"```"
-						].join('\n')
-					}
-				};
-			}
-		}
-	}
-	return null;
-});
-async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
-	: Promise<Either<NonEmpty<Diagnostic[]>, Topology | null>> {
+async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
+	: Promise<Either<NonEmpty<Diagnostic[]>, Topology>> {
 	const execAsync = promisify(exec);
 
 	// Run prebuild task
@@ -362,11 +328,105 @@ async function analyze(filenames: NonEmpty<string[]>, options: string[] = [])
 					}) as NonEmpty<Diagnostic[]>;
 			return left(diagnostics);
 		case "Success":
-			return right(res.topology ?? null);
+			return right(res.topology);
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}
 
+}
+
+async function makeDefinition(params: DefinitionParams, settings: Settings): Promise<Definition | null> {
+	const line = params.position.line;
+	const uri = URI.parse(params.textDocument.uri);
+	const readFileAsync = promisify(readFile);
+	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
+	let buf;
+	try {
+		buf = await readFileAsync(uri.fsPath);
+	} catch (e) {
+		connection.console.log(e);
+		return null;
+	}
+	const src = buf.toString();
+	const lines = src.split(/\n|\r\n/);
+	const labelRegex = /(#pragma cle) (begin |end )?(\w+)/.exec(lines[line]);
+	if (labelRegex) {
+		const label = labelRegex[3];
+		for (const file of files) {
+			let buf;
+			try {
+				buf = await readFileAsync(file);
+			} catch (e) {
+				connection.console.log(e);
+				continue;
+			}
+			const src = buf.toString();
+			const labelDefRegex = (new RegExp(`(#pragma cle def) ${label}(\\s+{(.*\\\\\\n)*.*})`, "g")).exec(src);
+			if (labelDefRegex) {
+				const index = labelDefRegex.index;
+				let count = 0;
+				let i = 0;
+				let lastNewline = 0;
+				for (; i < index; i++) {
+					if (/^(\n|\r\n)/.exec(src.slice(i))) {
+						count++;
+						lastNewline = i;
+					}
+				}
+				const charStart = index - lastNewline;
+				return {
+					uri: URI.parse(path.resolve(file)).toString(),
+					range: Range.create(Position.create(count, charStart),
+						Position.create(count, charStart + labelDefRegex[0].length))
+				};
+			}
+		}
+	}
+	return null;
+};
+
+async function makeHover(params: HoverParams, settings: Settings): Promise<Hover | null> {
+	const line = params.position.line;
+	const uri = URI.parse(params.textDocument.uri);
+	const readFileAsync = promisify(readFile);
+	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
+	let buf;
+	try {
+		buf = await readFileAsync(uri.fsPath);
+	} catch (e) {
+		connection.console.log(e);
+		return null;
+	}
+	const src = buf.toString();
+	const lines = src.split(/\n|\r\n/);
+	const labelRegex = /(#pragma cle) (begin |end )?(\w+)/.exec(lines[line]);
+	if (labelRegex) {
+		const label = labelRegex[3];
+		for (const file of files) {
+			let buf;
+			try {
+				buf = await readFileAsync(file);
+			} catch (e) {
+				connection.console.log(e);
+				continue;
+			}
+			const src = buf.toString();
+			const labelDefRegex = (new RegExp(`(#pragma cle def) ${label}(\\s+{(.*\\\\\\n)*.*})`, "g")).exec(src);
+			if (labelDefRegex) {
+				return {
+					contents: {
+						kind: "markdown",
+						value: [
+							"```c",
+							labelDefRegex[0],
+							"```"
+						].join('\n')
+					}
+				};
+			}
+		}
+	}
+	return null;
 }
 
 // Listen on the connection
