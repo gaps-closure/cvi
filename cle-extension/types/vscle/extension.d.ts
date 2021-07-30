@@ -47,3 +47,4 @@ export interface HighlightNotification {
     range: Range
     color: string
 }
+export interface UnHighlightNotification {}

@@ -87,6 +87,17 @@ export async function* map<A,B>(it: Stream<A>, map: (val: A) => B): Stream<B> {
         }
     }
 }
+
+export async function* filter<A>(it: Stream<A>, pred: (val: A) => boolean): Stream<A> {
+    while(true) {
+        for await(const val of it) {
+            if(pred(val)) {
+                yield val;
+            } 
+        }
+    }
+}
+
 export async function* of<A>(x: A): Stream<A> {
     while(true) {
         yield x;

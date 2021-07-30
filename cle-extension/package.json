@@ -33,6 +33,10 @@
 			{
 				"command": "vscle.startConflictAnalyzer",
 				"title": "CLE: Start Conflict Analyzer"
+			},
+			{
+				"command": "vscle.wrapInCLE",
+				"title": "CLE: Wrap Selection in Annotation"
 			}
 		],
 		"configuration": {
@@ -75,7 +79,18 @@
 					"description": "Directory for topology.json"
 				}
 			}
-		}
+		},
+		"snippets": [
+			{
+				"language": "c",
+				"path": "snippets.json"
+			},
+			{
+				"language": "cpp",
+				"path": "snippets.json"
+			}
+
+		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",

@@ -88,16 +88,16 @@ class Args:
     zmq_uri: Optional[str]
 
 
-return_conflict = True
+return_conflict = False
 
 
 def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
     src_file = src_files[0]
     name = src_file.parts[-1]
-    conflict = Conflict(name="Unresolvable Data Conflict",
-                        description="Cannot assign variable to both levels PURPLE and ORANGE",
+    conflict = Conflict(name="Invalid JSON",
+                        description="Label 'ORANGE' has incorrect JSON. rettaints is provided but argtaints and codtaints are missing.\nSuggested refactor:\n\tAdd argtaints and codtaints to 'ORANGE'",
                         sources=[
-                            Source("/home/closure/gaps/sprint-demo/example1/annotated/example1.c", Range(Position(42, 0), Position(42, 11)))],
+                            Source("/home/closure/gaps/build/apps/conflicts/annotated/missing-taints-def.c", Range(Position(3, 1), Position(10, 4)))],
                         remedies=[])
     if return_conflict:
         return ConflictResult(result="Conflict", conflicts=[conflict])

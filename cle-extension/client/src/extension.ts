@@ -1,4 +1,4 @@
-import { ExtensionContext, commands, window, workspace, Range, Position } from 'vscode';
+import { ExtensionContext, commands, window, workspace, Range, Position, TextEditorDecorationType } from 'vscode';
 import {
 	LanguageClient,
 	LanguageClientOptions,
@@ -7,7 +7,7 @@ import {
 	TransportKind,
 } from 'vscode-languageclient/node';
 import * as path from 'path';
-import { HighlightNotification } from '../../types/vscle/extension';
+import { HighlightNotification, UnHighlightNotification } from '../../types/vscle/extension';
 
 let client: LanguageClient;
 
@@ -54,17 +54,32 @@ export function activate(context: ExtensionContext) {
 
 
 		client.onReady().then(() => {
+			const types: TextEditorDecorationType[] = [];
 			// Handle highlight notification
 			client.onNotification(new NotificationType<HighlightNotification>("highlight"), params => {
 				const type = window.createTextEditorDecorationType({
-					backgroundColor: params.color,
+						backgroundColor: params.color,
 				});
-
+				const range = 
+					new Range(
+						new Position(
+							params.range.start.line, params.range.start.character), 
+						new Position(
+							params.range.end.line, params.range.end.character));
+				
+				types.push(type);
 				for (const editor of window.visibleTextEditors) {
-					editor.setDecorations(type, [new Range(new Position(params.range.start.line, params.range.start.character), new Position(params.range.end.line, params.range.end.character))])
+					editor.setDecorations(type, [range]);
 				}
 			});
 
+			client.onNotification(new NotificationType<UnHighlightNotification>("unhighlight"), () => {
+				for (const editor of window.visibleTextEditors) {
+					for(const type of types) {
+						editor.setDecorations(type, []);
+					}
+				}
+			});
 		});
 
 		// Start the client. This will also launch the server

@@ -28,7 +28,7 @@ import { readdir, readFile, stat } from 'fs';
 import { URI } from 'vscode-uri';
 import path = require('path');
 import { promisify } from 'util';
-import { HighlightNotification, Settings } from '../../types/vscle/extension';
+import { HighlightNotification, Settings, UnHighlightNotification } from '../../types/vscle/extension';
 import { AnalyzerResult, Topology } from '../../types/vscle/analyzer';
 import { NonEmpty } from '../../types/vscle/util';
 import { exec } from 'child_process';
@@ -45,8 +45,10 @@ import {
 	wrapListenerWithReturn,
 	of,
 	cloneable,
-	clone
+	clone,
+	filter
 } from './stream';
+import { FunctionDefinitionContext } from './CParser';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -56,7 +58,7 @@ connection.onInitialize((params: InitializeParams) => {
 		capabilities: {
 			textDocumentSync: TextDocumentSyncKind.Full,
 			executeCommandProvider: {
-				commands: ['vscle.startConflictAnalyzer']
+				commands: ['vscle.startConflictAnalyzer', 'vscle.wrapInCLE']
 			},
 			hoverProvider: true,
 			workspace: {
@@ -64,7 +66,8 @@ connection.onInitialize((params: InitializeParams) => {
 					supported: true
 				}
 			},
-			definitionProvider: true
+			definitionProvider: true,
+			codeActionProvider: true
 		}
 	};
 	return result;
@@ -79,16 +82,21 @@ connection.onInitialized(async () => {
 	const configChange$ = wrapListener(connection.onDidChangeConfiguration);
 	const settings$ = cloneable(settingsGen(configChange$));
 	const topologyRead$ = readTopologyGen(clone(didOpen$), cache(clone(settings$)));
-	const executeCommand$ = wrapListener(connection.onExecuteCommand);
-	const analysis$ = analyzerGen(executeCommand$, cache(clone(settings$)));
+	const executeCommand$ = cloneable(wrapListener(connection.onExecuteCommand));
+	const startConflictAnalyzer$ = filter(clone(executeCommand$), params => params.command == 'vscle.startConflictAnalyzer');
+	const analysis$ = analyzerGen(startConflictAnalyzer$, cache(clone(settings$)));
 	const topologyAnalysis$ = sendConflictsGen(analysis$);
 	const topology$ = combine(topologyRead$, topologyAnalysis$);
 	const textDoc$ = map(clone(didOpen$), params => params.document);
 	sendTopologyIter(topology$, cache(clone(settings$)), cache(textDoc$));
 	wrapListenerWithReturn(connection.onDefinition, def$ => definitionGen(def$, cache(clone(settings$))));
 	wrapListenerWithReturn(connection.onHover, hover$ => hoverGen(hover$, cache(clone(settings$))));
+	wrapListenerWithReturn(connection.onCodeAction, _ => of([{
+		title: 'Wrap in CLE Label',
+		command: 'editor.action.insertSnippet',
+		arguments: [{ snippet: ["#pragma cle begin ${1:LABEL}", "$TM_SELECTED_TEXT", "#pragma cle end ${1:LABEL}"].join("\n") }]
+	}]));
 });
-
 async function getSettings(): Promise<Settings> {
 	return (await connection.workspace.getConfiguration()).vscle as Settings;
 }
@@ -102,26 +110,25 @@ async function* settingsGen(configChange$: Stream<DidChangeConfigurationParams>)
 }
 
 
-async function* analyzerGen(executeCommand$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>): 
+
+async function* analyzerGen(startConflictAnalyzer$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>):
 	Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
 	while (true) {
-		for await (const params of executeCommand$) {
-			if (params.command === 'vscle.startConflictAnalyzer') {
-				const settings = (await settings$.next()).value;
-				try {
-					const files
-						= (await Promise.all(
-							settings.sourceDirs.map(async dir =>
-								await getAllCLikeFiles(dir)))).flat();
-					if (files.length === 0) {
-						throw new Error('Empty number of source files');
-					}
-					// Give diagnostics back to user, otherwise show success message
-					yield await analyze(settings, files as NonEmpty<string[]>);
-				} catch (e) {
-					connection.window.showErrorMessage(e.message);
-					connection.console.error(e.message);
+		for await (const params of startConflictAnalyzer$) {
+			const settings = (await settings$.next()).value;
+			try {
+				const files
+					= (await Promise.all(
+						settings.sourceDirs.map(async dir =>
+							await getAllCLikeFiles(dir)))).flat();
+				if (files.length === 0) {
+					throw new Error('Empty number of source files');
 				}
+				// Give diagnostics back to user, otherwise show success message
+				yield await analyze(settings, files as NonEmpty<string[]>);
+			} catch (e) {
+				connection.window.showErrorMessage(e.message);
+				connection.console.error(e.message);
 			}
 		}
 	}
@@ -159,16 +166,16 @@ async function* readTopologyGen(didOpen$: Stream<TextDocumentChangeEvent<TextDoc
 }
 
 async function* definitionGen(definition$: Stream<DefinitionParams>, settings$: Stream<Settings>): Stream<Definition | null> {
-	while(true)	{
-		for await(const params of definition$) {
+	while (true) {
+		for await (const params of definition$) {
 			const settings = (await settings$.next()).value;
 			yield await makeDefinition(params, settings);
 		}
 	}
 }
 async function* hoverGen(hover$: Stream<HoverParams>, settings$: Stream<Settings>): Stream<Hover | null> {
-	while(true)	{
-		for await(const params of hover$) {
+	while (true) {
+		for await (const params of hover$) {
 			const settings = (await settings$.next()).value;
 			yield await makeHover(params, settings);
 		}
@@ -240,16 +247,20 @@ async function sendTopology(top: Topology, settings: Settings, currentTextDocume
 			levelMap.set(level, Color.hsl(i, 50, 65));
 			i += 360 / levelSet.size;
 		}
+		interface LevelDefPair {
+			def: FunctionDefinitionContext,
+			level: string
+		}
+		connection.sendNotification<UnHighlightNotification>(new NotificationType<UnHighlightNotification>("unhighlight"), {});
 		assignments
 			.map(({ name, level }) =>
-				({ def: defs.find(def => functionName(def).toString() == name.trim()), level }))
-			.filter(x => x != null && x != undefined)
+				({ def: defs.find(def => functionName(def).toString() === name.trim()), level }))
+			.filter<LevelDefPair>((pair): pair is LevelDefPair => pair.def !== undefined)
 			.forEach(({ def, level }) => {
-				// SAFETY: see filter function above
-				const startLine = def!.start.line;
-				const startChar = def!.start.charPositionInLine;
-				const endLine = def!.stop?.line ?? startLine;
-				const endChar = def!.stop?.charPositionInLine ?? startChar;
+				const startLine = def.start.line;
+				const startChar = def.start.charPositionInLine;
+				const endLine = def.stop?.line ?? startLine;
+				const endChar = def.stop?.charPositionInLine ?? startChar;
 				const range = Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar));
 				connection.sendNotification<HighlightNotification>(new NotificationType<HighlightNotification>("highlight"),
 					{ range, color: `${levelMap.get(level)?.hex()}30` ?? '#0000' });
