@@ -89,16 +89,15 @@
 				"language": "cpp",
 				"path": "snippets.json"
 			}
-
 		]
 	},
 	"scripts": {
 		"vscode:prepublish": "npm run compile",
-		"compile": "tsc -b && npm run antlr4ts",
+		"compile": "npm run antlr4ts && tsc -b",
 		"watch": "tsc -b -w",
 		"pretest": "npm run compile",
 		"lint": "eslint src --ext ts",
-		"antlr4ts": "antlr4ts -visitor server/src/C.g4 -depend",
+		"antlr4ts": "antlr4ts -visitor server/src/C.g4 && antlr4ts -visitor server/src/CLE.g4",
 		"test": "node test/out/zmqtest/zmqtest.js"
 	},
 	"devDependencies": {

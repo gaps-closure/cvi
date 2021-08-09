@@ -16,7 +16,13 @@ import {
 	DefinitionParams,
 	Definition,
 	HoverParams,
-	Hover
+	Hover,
+	CodeActionParams,
+	CodeAction,
+	Command,
+	RenameParams,
+	WorkspaceEdit,
+	TextEdit
 } from 'vscode-languageserver/node';
 
 import {
@@ -49,6 +55,7 @@ import {
 	filter
 } from './stream';
 import { FunctionDefinitionContext } from './CParser';
+import { CodeActionKind, Uri } from 'vscode';
 
 const connection = createConnection(ProposedFeatures.all);
 const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
@@ -67,7 +74,8 @@ connection.onInitialize((params: InitializeParams) => {
 				}
 			},
 			definitionProvider: true,
-			codeActionProvider: true
+			codeActionProvider: true,
+			renameProvider: true,
 		}
 	};
 	return result;
@@ -89,13 +97,18 @@ connection.onInitialized(async () => {
 	const topology$ = combine(topologyRead$, topologyAnalysis$);
 	const textDoc$ = map(clone(didOpen$), params => params.document);
 	sendTopologyIter(topology$, cache(clone(settings$)), cache(textDoc$));
-	wrapListenerWithReturn(connection.onDefinition, def$ => definitionGen(def$, cache(clone(settings$))));
-	wrapListenerWithReturn(connection.onHover, hover$ => hoverGen(hover$, cache(clone(settings$))));
-	wrapListenerWithReturn(connection.onCodeAction, _ => of([{
-		title: 'Wrap in CLE Label',
-		command: 'editor.action.insertSnippet',
-		arguments: [{ snippet: ["#pragma cle begin ${1:LABEL}", "$TM_SELECTED_TEXT", "#pragma cle end ${1:LABEL}"].join("\n") }]
-	}]));
+	connection.onDefinition(async params => {
+		const settings = (await cache(clone(settings$)).next()).value;
+		return makeDefinition(params, settings);
+	})
+	connection.onHover(async params => {
+		const settings = (await cache(clone(settings$)).next()).value;
+		return makeHover(params, settings);
+	})
+	connection.onCodeAction(makeAction);
+	connection.onRenameRequest(async params => 
+		makeRename(params, (await cache(clone(settings$)).next()).value));
+	
 });
 async function getSettings(): Promise<Settings> {
 	return (await connection.workspace.getConfiguration()).vscle as Settings;
@@ -108,8 +121,84 @@ async function* settingsGen(configChange$: Stream<DidChangeConfigurationParams>)
 		}
 	}
 }
+async function makeRename(params: RenameParams, settings: Settings): Promise<WorkspaceEdit | null> {
+	const fsPath = URI.parse(params.textDocument.uri).fsPath;
+	const def = await getCLEDefinition(fsPath, params.position.line, settings);
+	if(!def) {
+		return null;
+	}
+	const occurences = await getCLELabels(def.label, settings);
+	console.log(JSON.stringify(occurences, null, 2));
+	console.log(JSON.stringify(def, null, 2));
+	if(!occurences) {
+		return null;
+	}
 
+	function labelRange(info: CLEInfo): Range {
+		const index = (new RegExp(info.label)).exec(info.text)!.index;
+		const start = info.range.start.character + index;
+		const end = start + info.label.length;
+		return Range.create(
+			Position.create(info.range.start.line, start), 
+			Position.create(info.range.start.line, end)
+		);
+	}
+	type Change = {
+		[key: string]: TextEdit[]
+	};
+	const changesMap = new Map<string, TextEdit[]>();
+	changesMap.set(
+		URI.file(path.resolve(def.path)).toString(), [{ range: labelRange(def), newText: params.newName }]
+	);
 
+	for(const occ of occurences) {
+		const key = URI.file(path.resolve(occ.path)).toString();
+		const prev = changesMap.get(key) ?? [];
+		changesMap.set(key, [{ range: labelRange(occ), newText: params.newName }, ...prev]);
+	}
+
+	let changes: Change = {};
+	for (const [k,v] of changesMap.entries()) {
+		changes[k] = v; 
+	}
+	return {
+		changes
+	};
+}
+async function makeAction(params: CodeActionParams): Promise<CodeAction[] | null> {
+	const doc = URI.parse(params.textDocument.uri).fsPath;
+	const parsed = await parseCFile(doc);
+	const fndefs = functionDefinitions(parsed.tree);
+	const { range } = params;
+	const validSelection = 
+		range.end.line == range.start.line 
+			? range.end.character > range.start.character  
+			: range.end.line > range.start.line;
+	const sendAction = fndefs
+		.map(fndef => fndef.start.line - 1)
+		.filter(line => params.range.start.line == line)
+		.length > 0 && validSelection; 
+	if(sendAction) {
+		return [{
+			title: 'Wrap in CLE Label',
+			kind: 'refactor.inline',
+			command: {
+				title: 'Wrap in CLE Label', 
+				command: 'editor.action.insertSnippet',
+				arguments: [{ 
+					snippet: [
+						"#pragma cle begin ${1:LABEL}", 
+						"$TM_SELECTED_TEXT", 
+						"#pragma cle end ${1:LABEL}", 
+						""
+					].join("\n")
+				}]
+			}
+		}]
+	} else {
+		return null;
+	}
+}
 
 async function* analyzerGen(startConflictAnalyzer$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>):
 	Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
@@ -161,23 +250,6 @@ async function* readTopologyGen(didOpen$: Stream<TextDocumentChangeEvent<TextDoc
 			if (top) {
 				yield top;
 			}
-		}
-	}
-}
-
-async function* definitionGen(definition$: Stream<DefinitionParams>, settings$: Stream<Settings>): Stream<Definition | null> {
-	while (true) {
-		for await (const params of definition$) {
-			const settings = (await settings$.next()).value;
-			yield await makeDefinition(params, settings);
-		}
-	}
-}
-async function* hoverGen(hover$: Stream<HoverParams>, settings$: Stream<Settings>): Stream<Hover | null> {
-	while (true) {
-		for await (const params of hover$) {
-			const settings = (await settings$.next()).value;
-			yield await makeHover(params, settings);
 		}
 	}
 }
@@ -432,6 +504,94 @@ async function makeHover(params: HoverParams, settings: Settings): Promise<Hover
 				};
 			}
 		}
+	}
+	return null;
+}
+
+interface CLEInfo {
+	range: Range,
+	text: string,
+	path: string,
+	label: string,
+};
+async function getCLEDefinition(path: string, line: number, settings: Settings): Promise<CLEInfo | null> {
+	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
+	const readFileAsync = promisify(readFile);
+	let buf;
+	try {
+		buf = await readFileAsync(path);
+	} catch (e) {
+		connection.console.log(e);
+		return null;
+	}
+	const src = buf.toString();
+	const lines = src.split(/\n|\r\n/);
+	const labelRegex = /(#pragma cle) (begin |end )?(\w+)/.exec(lines[line]);
+	if (labelRegex) {
+		const label = labelRegex[3];
+		for (const file of files) {
+			let buf;
+			try {
+				buf = await readFileAsync(file);
+			} catch (e) {
+				connection.console.log(e);
+				continue;
+			}
+			const src = buf.toString();
+			const labelDefRegex = (new RegExp(`#pragma\\s+cle\\s+def\\s+${label}(\\s+{(.*\\\\\\s*\\n)*.*})`, "g")).exec(src);
+			if(labelDefRegex) {
+				const index = labelDefRegex.index;
+				let count = 0;
+				let i = 0;
+				let lastNewline = 0;
+				for (; i < index; i++) {
+					if (/^(\n|\r\n)/.exec(src.slice(i))) {
+						count++;
+						lastNewline = i;
+					}
+				}
+				const charStart = index - lastNewline - 1;
+				return {
+					range: Range.create(Position.create(count, charStart),
+						Position.create(count, charStart + labelDefRegex[0].length)),
+					path: file,
+					text: labelDefRegex[0],
+					label,
+				};
+			}
+		}
+	}
+	return null;
+}
+
+async function getCLELabels(label: string, settings: Settings): Promise<CLEInfo[] | null> {
+	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
+	const readFileAsync = promisify(readFile);
+	for(const file of files) {
+		let buf;
+		try {
+			buf = await readFileAsync(file);
+		} catch (e) {
+			connection.console.log(e);
+			continue;
+		}
+		const src = buf.toString();
+
+		const lines = src.split(/\n|\r\n/);
+		const labelRegexes = lines
+			.map((line, i) => [/#pragma\s+cle\s+(begin|end)?\s+(\w+)/.exec(line), i])
+			.filter(([regex, _]) => regex !== null) as [RegExpExecArray, number][];	
+		return labelRegexes.map(([regex, line]) => {
+			return {
+				range: Range.create(
+						Position.create(line, regex.index),
+						Position.create(line, regex.input.length),
+				),
+				text: regex.input,
+				label: regex[2],
+				path: file
+			};
+		}).filter(({ label: foundLabel }) => label == foundLabel );
 	}
 	return null;
 }

@@ -1,0 +1,7 @@
+{
+    "name": "cle-extension",
+    "build": {
+        "dockerfile": "../Dockerfile",
+    },
+    "mounts": ["source=${localEnv:HOME}/gaps,target=/home/closure/gaps,type=bind,consistency=cached"]
+}

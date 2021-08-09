@@ -9,7 +9,7 @@ export function wrapListener<A>(handler: (_: (_: A) => void) => void) {
         }
     })();
 }
-export function wrapListenerWithReturn<A,B>(handler: (_: (params: A) => Promise<B>) => void, consumer: (_: Stream<A>) => Stream<B>): void {
+export function wrapListenerWithReturn<A,B>(handler: (cb: (params: A) => Promise<B>) => void, consumer: (_: Stream<A>) => Stream<B>): void {
 	let callback = (x: A) => {};
 	let prom = new Promise<A>(resolve => callback = resolve);
 	const inStream = (async function* () {
@@ -17,7 +17,6 @@ export function wrapListenerWithReturn<A,B>(handler: (_: (params: A) => Promise<
 			yield await prom;
 			prom = new Promise<A>(resolve => callback = resolve);
 		}
-
 	})();
 	const outStream = consumer(inStream);
 	handler(async params => {
