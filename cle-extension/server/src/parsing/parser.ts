@@ -6,17 +6,6 @@ import { ParseTreeWalker } from 'antlr4ts/tree/ParseTreeWalker'
 import { CharStreams, CommonTokenStream } from 'antlr4ts';
 import { CLexer } from "./CLexer";
 import { TerminalNode } from "antlr4ts/tree/TerminalNode";
-import { CleLabelContext, CLEParser } from "./CLEParser";
-import { CLELexer } from "./CLELexer";
-
-export function parseCLE(src: string): { tree: CleLabelContext, tokenStream: CommonTokenStream } {
-    let inputStream = CharStreams.fromString(src);
-    let lexer = new CLELexer(inputStream);
-    let tokenStream = new CommonTokenStream(lexer);
-    let parser = new CLEParser(tokenStream);
-    let tree = parser.cleLabel();
-    return {tree, tokenStream}; 
-}
 export async function parseCFile(filename: string): Promise<{ tree: CompilationUnitContext, tokenStream: CommonTokenStream}> {
 
     const asyncRead = promisify(readFile);

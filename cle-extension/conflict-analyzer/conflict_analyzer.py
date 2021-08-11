@@ -88,18 +88,17 @@ class Args:
     zmq_uri: Optional[str]
 
 
-return_conflict = False
-
 
 def conflict_analyzer(src_files: List[Path]) -> AnalyzerResult:
     src_file = src_files[0]
     name = src_file.parts[-1]
-    conflict = Conflict(name="Invalid JSON",
-                        description="Label 'ORANGE' has incorrect JSON. rettaints is provided but argtaints and codtaints are missing.\nSuggested refactor:\n\tAdd argtaints and codtaints to 'ORANGE'",
+    conflict = Conflict(name="Unannotated Function",
+                        description="Function 'get_a' is unannotated but appears in cross-domain call.",
                         sources=[
-                            Source("/home/closure/gaps/build/apps/conflicts/annotated/missing-taints-def.c", Range(Position(3, 1), Position(10, 4)))],
+                            Source("/home/closure/gaps/build/apps/examples/example1/annotated/example1-wrong.c", Range(Position(29, 1), Position(35, 1)))
+                        ],
                         remedies=[])
-    if return_conflict:
+    if name == 'example1-wrong.c':
         return ConflictResult(result="Conflict", conflicts=[conflict])
     topology = Topology(
         "./refactored",

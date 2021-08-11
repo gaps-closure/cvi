@@ -97,7 +97,7 @@
 		"watch": "tsc -b -w",
 		"pretest": "npm run compile",
 		"lint": "eslint src --ext ts",
-		"antlr4ts": "antlr4ts -visitor server/src/C.g4 && antlr4ts -visitor server/src/CLE.g4",
+		"antlr4ts": "antlr4ts -visitor server/src/parsing/C.g4",
 		"test": "node test/out/zmqtest/zmqtest.js"
 	},
 	"devDependencies": {
