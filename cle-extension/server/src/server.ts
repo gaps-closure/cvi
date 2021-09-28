@@ -45,155 +45,162 @@ import {
 } from './stream';
 
 import { FunctionDefinitionContext } from './parsing/CParser';
-import { getAllCLikeFiles, readTopologyJSON, sendTopology } from './util';
+import { getSrcFiles, readTopologyJSON, sendTopology } from './util';
 import { makeDefinition } from './definition';
 import { makeHover } from './hover';
 import { makeRename } from './rename';
 import { makeAction } from './action';
-import { analyze } from './analyze';
+import { analyze, sendResults } from './analyze';
 
+export interface Context {
+	connection: Connection,
+	documents: TextDocuments<TextDocument>
+}
 
-const connection = createConnection(ProposedFeatures.all);
-const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
+interface Ext {
+	settings: Settings,
+	curTextDoc?: TextDocument
+}
+interface State<T> {
+	get: () => T,
+	modify: (modifier: (oldState: T) => T) => T,
+	put: (newState: T) => T
+}
+export type ExtState = State<Ext>;
 
-connection.onInitialize((_params: InitializeParams) => ({
-	capabilities: {
-		textDocumentSync: TextDocumentSyncKind.Full,
-		executeCommandProvider: {
-			commands: ['vscle.startConflictAnalyzer', 'vscle.wrapInCLE']
-		},
-		hoverProvider: true,
-		workspace: {
-			workspaceFolders: {
-				supported: true
-			}
-		},
-		definitionProvider: true,
-		codeActionProvider: true,
-		renameProvider: true,
-	}
-}));
+function initContext(): Context {
 
-connection.onInitialized(async () => {
-	// Register for all configuration changes.
-	connection.client.register(DidChangeConfigurationNotification.type, undefined);
+	const connection = createConnection(ProposedFeatures.all);
+	const documents: TextDocuments<TextDocument> = new TextDocuments(TextDocument);
 
-	// Setup streams 
-	let topology : Topology | null = null;
-	let currentTextDocument : TextDocument | null = null;
-	documents.onDidOpen(async params => {
-		const settings = await getSettings(); 
-		currentTextDocument = params.document;
-		if(!topology) {
-			const top = await readTopologyJSON(connection, settings);
-			if(top) {
-				topology = top;
-				sendTopology(connection, topology, settings, currentTextDocument);
-			}
-
-		}
-	})
-	connection.onExecuteCommand(async params => {
-		if(params.command == 'vscle.startConflictAnalyzer') {
-			const settings = await getSettings();
-			try {
-				const files
-					= (await Promise.all(
-						settings.sourceDirs.map(async dir =>
-							await getAllCLikeFiles(dir)))).flat();
-				if (files.length === 0) {
-					throw new Error('Empty number of source files');
+	connection.onInitialize((_params: InitializeParams) => ({
+		capabilities: {
+			textDocumentSync: TextDocumentSyncKind.Full,
+			executeCommandProvider: {
+				commands: ['vscle.startConflictAnalyzer', 'vscle.wrapInCLE']
+			},
+			hoverProvider: true,
+			workspace: {
+				workspaceFolders: {
+					supported: true
 				}
-				// Give diagnostics back to user, otherwise show topology
-				const res = await analyze(settings, files as NonEmpty<string[]>);
-				switch (res._tag) {
-					case "Left": {
-						for (const diagnostic of res.left) {
-							const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
-							connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
-						}
-						break;
-					}
-					default: {
-						topology = res.right;
-						if(currentTextDocument)
-							sendTopology(connection, topology, settings, currentTextDocument);
-					}
-				}
-			} catch (e: any) {
-				connection.window.showErrorMessage(e.message);
-				connection.console.error(e.message);
-			}
+			},
+			definitionProvider: true,
+			codeActionProvider: true,
+			renameProvider: true,
 		}
+	}));
+
+	documents.listen(connection);
+	connection.listen();
+
+	return { connection, documents };
+
+}
+
+function registerOnDidOpen(ctx: Context, { modify }: ExtState) {
+	ctx.documents.onDidOpen(async ({ document }) => {
+		let state = modify(s => ({ ...s, curTextDoc: document }));
+	 	const topology = await readTopologyJSON(ctx.connection, state.settings);
+		if(topology) {
+			sendTopology(ctx.connection, topology, state.settings, state.curTextDoc!);
+		}
+
 	});
+}
+function wrapError<A,B>(connection: Connection, f: (x: A) => B) {
+	return function(a: A): B | null {
+		let res;
+		try {
+			res = f(a);
+		} catch(e: any) {
+			connection.console.error(e);
+			connection.window.showErrorMessage(e.message);
+			return null;
+		}
+		return res;
+	}
+}
+function registerOnExecuteCommand(ctx: Context, state: ExtState) {
+	ctx.connection.onExecuteCommand(wrapError(ctx.connection, async params => {
+		if (params.command == 'vscle.startConflictAnalyzer') {
+			const settings = state.get().settings;
+			const files = await getSrcFiles(settings);
+			if(files.length == 0) 
+				throw new Error('Could not run conflict analyzer on empty source files');
+			const results = await analyze(settings, files as NonEmpty<string[]>);
+			sendResults(ctx, state, results);
+		}
+	}));
+}
 
-	connection.onHover(async params => 
-		makeHover(connection, params, await getSettings())
+function registerOnConfigurationChange(ctx: Context, state: ExtState) {
+	ctx.connection.onDidChangeConfiguration(async () => {
+		const settings = await getSettings(ctx.connection);
+		state.modify(s => ({...s, settings }));
+	});
+}
+
+function registerOnHover(ctx: Context, state: ExtState) {
+	ctx.connection.onHover(params => 
+		makeHover(ctx.connection, params, state.get().settings)
 	);
-	connection.onDefinition(async params => 
-		makeDefinition(connection, params, await getSettings())
+}
+
+function registerOnDefinition(ctx: Context, state: ExtState) {
+	ctx.connection.onDefinition(params => 
+		makeDefinition(ctx.connection, params, state.get().settings)
 	);
-	connection.onCodeAction(makeAction);
-	connection.onRenameRequest(async params => 
-		makeRename(connection, params, await getSettings())
+}
+
+function registerOnCodeAction(ctx: Context) {
+	ctx.connection.onCodeAction(makeAction);
+}
+
+function registerOnRenameRequest(ctx: Context, state: ExtState) {
+	ctx.connection.onRenameRequest(params =>
+		makeRename(ctx.connection, params, state.get().settings)
 	);
-	
-	
-});
-async function getSettings(): Promise<Settings> {
+}
+
+function registerListeners(ctx: Context, state: ExtState) {
+	registerOnDidOpen(ctx, state);
+	registerOnConfigurationChange(ctx, state);
+	registerOnExecuteCommand(ctx, state);
+	registerOnHover(ctx, state);
+	registerOnDefinition(ctx, state);
+	registerOnCodeAction(ctx);
+	registerOnRenameRequest(ctx, state);
+}
+
+async function initState({ connection }: Context): Promise<ExtState> {
+	await new Promise(resolve => connection.onInitialized(resolve));	
+	const settings = await getSettings(connection); 
+	let state = { settings };
+	function put(newState: Ext): Ext {
+		state = newState;
+		return state;
+	}
+	function get(): Ext {
+		return state;
+	}
+	function modify(modifier: (oldState: Ext) => Ext): Ext {
+		return put(modifier(get()));	
+	}
+
+	return { put, get, modify };
+}
+
+async function start() {
+	const ctx = initContext();
+	const state = await initState(ctx);
+	registerListeners(ctx, state);
+}
+
+
+start();
+
+async function getSettings(connection: Connection): Promise<Settings> {
 	return (await connection.workspace.getConfiguration()).vscle as Settings;
 }
-async function* settingsGen(configChange$: Stream<DidChangeConfigurationParams>): Stream<Settings> {
-	yield await getSettings();
-	while (true) {
-		for await (const _ of configChange$) {
-			yield await getSettings();
-		}
-	}
-}
 
-async function* analyzerGen(startConflictAnalyzer$: Stream<ExecuteCommandParams>, settings$: Stream<Settings>):
-	Stream<Either<NonEmpty<Diagnostic[]>, Topology>> {
-	while (true) {
-		for await (const _params of startConflictAnalyzer$) {
-			const settings = (await settings$.next()).value;
-			try {
-				const files
-					= (await Promise.all(
-						settings.sourceDirs.map(async dir =>
-							await getAllCLikeFiles(dir)))).flat();
-				if (files.length === 0) {
-					throw new Error('Empty number of source files');
-				}
-				// Give diagnostics back to user, otherwise show success message
-				yield await analyze(settings, files as NonEmpty<string[]>);
-			} catch (e: any) {
-				connection.window.showErrorMessage(e.message);
-				connection.console.error(e.message);
-			}
-		}
-	}
-}
-
-async function* sendConflictsGen(analysis$: Stream<Either<NonEmpty<Diagnostic[]>, Topology>>): Stream<Topology> {
-	while (true) {
-		for await (const res of analysis$) {
-			switch (res._tag) {
-				case "Left": {
-					for (const diagnostic of res.left) {
-						const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
-						connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
-					}
-					break;
-				}
-				default: {
-					yield res.right;
-				}
-			}
-		}
-	}
-}
-
-// Listen on the connection
-documents.listen(connection);
-connection.listen();

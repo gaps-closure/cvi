@@ -5,9 +5,12 @@ import { promisify } from "util";
 import { Diagnostic, Position, Range } from "vscode-languageserver/node";
 import { AnalyzerResult, NonEmpty, Settings, Topology } from "../../types/vscle/main";
 import * as zmq from 'zeromq';
+import { Context, ExtState } from "./server";
+import { sendTopology } from "./util";
+import { URI } from "vscode-uri";
 
 export async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
-	: Promise<Either<NonEmpty<Diagnostic[]>, Topology>> {
+	: Promise<NonEmpty<Diagnostic[]> | Topology> {
 	const execAsync = promisify(exec);
 
 	// Create ZMQ server
@@ -57,11 +60,23 @@ export async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
 							source: conflict.source.file
 						};
 					}) as NonEmpty<Diagnostic[]>;
-			return left(diagnostics);
+			return diagnostics;
 		case "Success":
-			return right(res.topology);
+			return res.topology;
 		case "Error":
 			throw new Error("Received error from conflict analyzer");
 	}
 
+}
+
+export function sendResults(ctx: Context, state: ExtState, results: NonEmpty<Diagnostic[]> | Topology) {
+	if(Array.isArray(results)) {
+		for(const diagnostic of results) {
+			const uri = diagnostic.source ? URI.file(diagnostic.source) : null;
+			ctx.connection.sendDiagnostics({ uri: uri?.toString() ?? '', diagnostics: [diagnostic] });
+		}
+	} else {
+		const { settings, curTextDoc } = state.get();
+		sendTopology(ctx.connection, results, settings, curTextDoc!);
+	}
 }

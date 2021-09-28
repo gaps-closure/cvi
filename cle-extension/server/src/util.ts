@@ -1,7 +1,8 @@
 import Color = require("color");
 import { readdir, readFile, stat } from "fs/promises";
 import * as path from "path";
-import { Connection, NotificationType, Position, Range, TextDocument } from "vscode-languageserver/node";
+import { Connection, NotificationType, Position, Range } from "vscode-languageserver/node";
+import { TextDocument } from 'vscode-languageserver-textdocument';
 import { URI } from "vscode-uri";
 import { HighlightNotification, Settings, Topology, UnHighlightNotification } from "../../types/vscle/main";
 import { FunctionDefinitionContext } from "./parsing/CParser";
@@ -160,3 +161,10 @@ export async function readTopologyJSON(connection: Connection, settings: Setting
 	return top;
 }
 
+export async function getSrcFiles(settings: Settings): Promise<string[]> {
+	const files
+		= (await Promise.all(
+			settings.sourceDirs.map(async dir =>
+			await getAllCLikeFiles(dir)))).flat();
+	return files;
+}
