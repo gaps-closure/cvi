@@ -120,7 +120,7 @@ connection.onInitialized(async () => {
 							sendTopology(connection, topology, settings, currentTextDocument);
 					}
 				}
-			} catch (e) {
+			} catch (e: any) {
 				connection.window.showErrorMessage(e.message);
 				connection.console.error(e.message);
 			}
@@ -167,7 +167,7 @@ async function* analyzerGen(startConflictAnalyzer$: Stream<ExecuteCommandParams>
 				}
 				// Give diagnostics back to user, otherwise show success message
 				yield await analyze(settings, files as NonEmpty<string[]>);
-			} catch (e) {
+			} catch (e: any) {
 				connection.window.showErrorMessage(e.message);
 				connection.console.error(e.message);
 			}
@@ -193,30 +193,6 @@ async function* sendConflictsGen(analysis$: Stream<Either<NonEmpty<Diagnostic[]>
 		}
 	}
 }
-
-async function* readTopologyGen(didOpen$: Stream<TextDocumentChangeEvent<TextDocument>>, settings$: Stream<Settings>): Stream<Topology> {
-	while (true) {
-		for await (const _ of didOpen$) {
-			const settings = (await settings$.next()).value;
-			const top = await readTopologyJSON(connection, settings);
-			if (top) {
-				yield top;
-			}
-		}
-	}
-}
-
-async function sendTopologyIter(top$: Stream<Topology>, settings$: Stream<Settings>, textDoc$: Stream<TextDocument>) {
-	for await (const top of top$) {
-		const settings = (await settings$.next()).value;
-		const textDoc = (await textDoc$.next()).value;
-		sendTopology(connection, top, settings, textDoc);
-	}
-}
-
-
-
-
 
 // Listen on the connection
 documents.listen(connection);

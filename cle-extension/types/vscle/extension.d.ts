@@ -18,25 +18,7 @@ export interface Settings {
     /**
      * Path to the conflict analyzer python script
      */
-    conflictAnalyzerPath: FilePath,
-
-    /**
-     * Prebuild command which runs once per source file. 
-     * Environment variable $SRC_FILE will be set to the file path
-     * Environment variable $WORKING_DIR will be set to the working directory path 
-     */
-    prebuild?: string,
-
-    /**
-     * Path to the python executable. Defaults to using python3
-     */
-    pythonPath?: FilePath,
-
-    /**
-     * Directory to store work in. Defaults to '.cle-work/'
-     */
-    workingDir: FilePath,
-
+    conflictAnalyzerCommand: FilePath,
     /**
      * Output path for topology.json.
      */

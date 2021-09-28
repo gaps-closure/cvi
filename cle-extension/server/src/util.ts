@@ -8,7 +8,7 @@ import { FunctionDefinitionContext } from "./parsing/CParser";
 import { functionDefinitions, functionName, parseCFile } from "./parsing/parser";
 
 const labelRegex = /#pragma\s+cle\s+(begin|end)?\s+(\w+)/;
-const labelDefRegex = /#pragma\\s+cle\\s+def\\s+(\w+)(\\s+{(.*\\\\\\s*\\n)*.*})/;
+const labelDefRegex = /#pragma\s+cle\s+def\s+(\w+)(\s+{(.*\\\s*\n)*.*})/;
 
 export interface CLEInfo {
 	range: Range,
@@ -16,28 +16,17 @@ export interface CLEInfo {
 	path: string,
 	label: string,
 };
+
 export async function getCLEDefinition(connection: Connection, path: string, line: number, settings: Settings): Promise<CLEInfo | null> {
 	const files = (await Promise.all(settings.sourceDirs.map(path => getAllCLikeFiles(path)))).flat();
-	let buf;
-	try {
-		buf = await readFile(path);
-	} catch (e) {
-		connection.console.log(e);
-		return null;
-	}
+	const buf = await readFile(path);
 	const src = buf.toString();
 	const lines = src.split(/\n|\r\n/);
 	const labelRegexRes = labelRegex.exec(lines[line]);
 	if (labelRegexRes) {
 		const label = labelRegexRes[2];
 		for (const file of files) {
-			let buf;
-			try {
-				buf = await readFile(file);
-			} catch (e) {
-				connection.console.log(e);
-				continue;
-			}
+			let buf = await readFile(file);
 			const src = buf.toString();
 			const labelDefRegexRes = labelDefRegex.exec(src);
 			if(labelDefRegexRes) {
@@ -71,7 +60,7 @@ export async function getCLELabels(connection: Connection, label: string, settin
 		let buf;
 		try {
 			buf = await readFile(file);
-		} catch (e) {
+		} catch (e: any) {
 			connection.console.log(e);
 			continue;
 		}
@@ -153,7 +142,7 @@ export async function sendTopology(connection: Connection, top: Topology, settin
 				const startChar = def.start.charPositionInLine;
 				const endLine = def.stop?.line ?? startLine;
 				const endChar = def.stop?.charPositionInLine ?? startChar;
-				const range = Range.create(Position.create(startLine - 1, startChar), Position.create(endLine - 1, endChar));
+				const range = Range.create(Position.create(startLine - 2, startChar), Position.create(endLine, endChar));
 				connection.sendNotification<HighlightNotification>(new NotificationType<HighlightNotification>("highlight"),
 					{ range, color: `${levelMap.get(level)?.hex()}30` ?? '#0000' });
 			});
@@ -165,7 +154,7 @@ export async function readTopologyJSON(connection: Connection, settings: Setting
 	try {
 		const buf = await readFile(path.join(settings.outputPath, "/topology.json"));
 		top = JSON.parse(buf.toString()) as Topology;
-	} catch (e) {
+	} catch (e: any) {
 		connection.console.error(e);
 	}
 	return top;
