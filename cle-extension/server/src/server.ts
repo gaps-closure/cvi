@@ -21,6 +21,7 @@ import { makeAction } from './action';
 import { analyze, sendResults } from './analyze';
 import * as zmq from 'zeromq';
 import { Topology } from '../../types/vscle/analyzer';
+import { makeLens } from './lens';
 
 export interface Context {
 	connection: Connection,
@@ -60,6 +61,9 @@ function initContext(): Context {
 			definitionProvider: true,
 			codeActionProvider: true,
 			renameProvider: true,
+			codeLensProvider: {
+				resolveProvider: false
+			}
 		}
 	}));
 
@@ -77,6 +81,7 @@ function registerOnDidOpen(ctx: Context, { modify, get }: ExtState) {
 		let state = modify(s => ({ ...s, curTextDoc: document }));
 	 	const topology = (await readTopologyJSON(ctx.connection, state.settings)) ?? get().topology;
 		if(topology) {
+			modify(s => ({...s, topology}))
 			sendTopology(ctx.connection, topology, state.settings, state.curTextDoc!);
 		}
 	});
@@ -136,6 +141,10 @@ function registerOnRenameRequest(ctx: Context, state: ExtState) {
 	);
 }
 
+function registerOnCodeLens(ctx: Context, state: ExtState) {
+	ctx.connection.onCodeLens(params => makeLens(params, state));
+}
+
 function registerListeners(ctx: Context, state: ExtState) {
 	registerOnDidOpen(ctx, state);
 	registerOnConfigurationChange(ctx, state);
@@ -144,6 +153,7 @@ function registerListeners(ctx: Context, state: ExtState) {
 	registerOnDefinition(ctx, state);
 	registerOnCodeAction(ctx);
 	registerOnRenameRequest(ctx, state);
+	registerOnCodeLens(ctx, state);
 }
 
 async function initState({ connection, sock }: Context): Promise<ExtState> {
