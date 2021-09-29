@@ -1,18 +1,9 @@
 import {
 	createConnection,
 	TextDocuments,
-	Diagnostic,
 	ProposedFeatures,
 	InitializeParams,
-	DidChangeConfigurationNotification,
 	TextDocumentSyncKind,
-	InitializeResult,
-	Position,
-	Range,
-	NotificationType,
-	DidChangeConfigurationParams,
-	TextDocumentChangeEvent,
-	ExecuteCommandParams,
 	Connection,
 } from 'vscode-languageserver/node';
 
@@ -20,46 +11,27 @@ import {
 	TextDocument
 } from 'vscode-languageserver-textdocument';
 
-import * as zmq from 'zeromq';
-import { readdir, readFile, stat } from 'fs';
-import { URI } from 'vscode-uri';
-import path = require('path');
-import { promisify } from 'util';
-import { HighlightNotification, Settings, UnHighlightNotification } from '../../types/vscle/extension';
-import { AnalyzerResult, Topology } from '../../types/vscle/analyzer';
+import { Settings } from '../../types/vscle/extension';
 import { NonEmpty } from '../../types/vscle/util';
-import { exec } from 'child_process';
-import { URL } from 'url';
-import { Either, left, right } from 'fp-ts/lib/Either';
-import { functionDefinitions, functionName, parseCFile } from './parsing/parser';
-import * as Color from 'color';
-import {
-	cloneable,
-	wrapListener,
-	filter,
-	clone,
-	Stream,
-	combine,
-	map,
-	cache
-} from './stream';
-
-import { FunctionDefinitionContext } from './parsing/CParser';
 import { getSrcFiles, readTopologyJSON, sendTopology } from './util';
 import { makeDefinition } from './definition';
 import { makeHover } from './hover';
 import { makeRename } from './rename';
 import { makeAction } from './action';
 import { analyze, sendResults } from './analyze';
+import * as zmq from 'zeromq';
+import { Topology } from '../../types/vscle/analyzer';
 
 export interface Context {
 	connection: Connection,
-	documents: TextDocuments<TextDocument>
+	documents: TextDocuments<TextDocument>,
+	sock: zmq.Reply
 }
 
 interface Ext {
 	settings: Settings,
-	curTextDoc?: TextDocument
+	curTextDoc?: TextDocument,
+	topology?: Topology
 }
 interface State<T> {
 	get: () => T,
@@ -94,18 +66,19 @@ function initContext(): Context {
 	documents.listen(connection);
 	connection.listen();
 
-	return { connection, documents };
+	const sock = new zmq.Reply;
+
+	return { connection, documents, sock };
 
 }
 
-function registerOnDidOpen(ctx: Context, { modify }: ExtState) {
+function registerOnDidOpen(ctx: Context, { modify, get }: ExtState) {
 	ctx.documents.onDidOpen(async ({ document }) => {
 		let state = modify(s => ({ ...s, curTextDoc: document }));
-	 	const topology = await readTopologyJSON(ctx.connection, state.settings);
+	 	const topology = (await readTopologyJSON(ctx.connection, state.settings)) ?? get().topology;
 		if(topology) {
 			sendTopology(ctx.connection, topology, state.settings, state.curTextDoc!);
 		}
-
 	});
 }
 function wrapError<A,B>(connection: Connection, f: (x: A) => B) {
@@ -128,7 +101,7 @@ function registerOnExecuteCommand(ctx: Context, state: ExtState) {
 			const files = await getSrcFiles(settings);
 			if(files.length == 0) 
 				throw new Error('Could not run conflict analyzer on empty source files');
-			const results = await analyze(settings, files as NonEmpty<string[]>);
+			const results = await analyze(ctx.sock, settings, files as NonEmpty<string[]>);
 			sendResults(ctx, state, results);
 		}
 	}));
@@ -173,9 +146,10 @@ function registerListeners(ctx: Context, state: ExtState) {
 	registerOnRenameRequest(ctx, state);
 }
 
-async function initState({ connection }: Context): Promise<ExtState> {
+async function initState({ connection, sock }: Context): Promise<ExtState> {
 	await new Promise(resolve => connection.onInitialized(resolve));	
 	const settings = await getSettings(connection); 
+	await sock.bind(settings.zmqURI);
 	let state : Ext = { settings };
 	function put(newState: Ext): Ext {
 		Object.assign(state, newState);

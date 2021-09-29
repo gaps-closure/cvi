@@ -1,6 +1,4 @@
 import { exec } from "child_process";
-import { Either, left, right } from "fp-ts/lib/Either";
-import { URL } from "url";
 import { promisify } from "util";
 import { Diagnostic, Position, Range } from "vscode-languageserver/node";
 import { AnalyzerResult, NonEmpty, Settings, Topology } from "../../types/vscle/main";
@@ -9,30 +7,14 @@ import { Context, ExtState } from "./server";
 import { sendTopology } from "./util";
 import { URI } from "vscode-uri";
 
-export async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
+export async function analyze(sock: zmq.Reply, settings: Settings, filenames: NonEmpty<string[]>)
 	: Promise<NonEmpty<Diagnostic[]> | Topology> {
 	const execAsync = promisify(exec);
 
-	// Create ZMQ server
-	const url = new URL(settings.zmqURI);
-	const sock = new zmq.Reply;
-	await sock.bind(settings.zmqURI);
-
-	// Run conflict analyzer python file
-	let execProm;
-	try { 
-		execProm = execAsync(settings.conflictAnalyzerCommand);
-	} catch(e) {
-		sock.unbind(settings.zmqURI);
-		sock.close();
-		throw e;
-	}
-
-	// Receive ZMQ message
+	// Run conflict analyzer 
+	const execProm = execAsync(settings.conflictAnalyzerCommand);
 	const [msg] = await sock.receive();
 
-	sock.unbind(settings.zmqURI);
-	sock.close();
 	// Wait for exit
 	await execProm;
 
@@ -88,6 +70,7 @@ export function sendResults(ctx: Context, state: ExtState, results: NonEmpty<Dia
 		
 		ctx.connection.console.log(JSON.stringify(curTextDoc, null, 2));
 		if(curTextDoc) {
+			state.modify(s => ({...s, topology: results }));
 			sendTopology(ctx.connection, results, settings, curTextDoc);
 		} else {
 			throw new Error("Current document could not be found.")
