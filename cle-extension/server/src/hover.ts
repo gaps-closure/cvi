@@ -1,4 +1,5 @@
-import { readFile } from "fs/promises";
+import { promises } from "fs";
+const { readFile } = promises;
 import { Connection, Hover, HoverParams } from "vscode-languageserver/node";
 import { URI } from "vscode-uri";
 import { Settings } from "../../types/vscle/main";

@@ -1,5 +1,6 @@
 
-import { readFile } from 'fs/promises';
+import { promises } from 'fs';
+const { readFile } = promises;
 import path = require('path');
 import { Connection, Definition, DefinitionParams, Position, Range } from 'vscode-languageserver/node';
 import { URI } from 'vscode-uri';

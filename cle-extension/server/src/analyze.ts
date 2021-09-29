@@ -19,11 +19,19 @@ export async function analyze(settings: Settings, filenames: NonEmpty<string[]>)
 	await sock.bind(settings.zmqURI);
 
 	// Run conflict analyzer python file
-	const execProm = execAsync(settings.conflictAnalyzerCommand);
+	let execProm;
+	try { 
+		execProm = execAsync(settings.conflictAnalyzerCommand);
+	} catch(e) {
+		sock.unbind(settings.zmqURI);
+		sock.close();
+		throw e;
+	}
 
 	// Receive ZMQ message
 	const [msg] = await sock.receive();
 
+	sock.unbind(settings.zmqURI);
 	sock.close();
 	// Wait for exit
 	await execProm;
@@ -77,6 +85,12 @@ export function sendResults(ctx: Context, state: ExtState, results: NonEmpty<Dia
 		}
 	} else {
 		const { settings, curTextDoc } = state.get();
-		sendTopology(ctx.connection, results, settings, curTextDoc!);
+		
+		ctx.connection.console.log(JSON.stringify(curTextDoc, null, 2));
+		if(curTextDoc) {
+			sendTopology(ctx.connection, results, settings, curTextDoc);
+		} else {
+			throw new Error("Current document could not be found.")
+		}
 	}
 }

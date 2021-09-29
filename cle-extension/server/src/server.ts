@@ -176,9 +176,9 @@ function registerListeners(ctx: Context, state: ExtState) {
 async function initState({ connection }: Context): Promise<ExtState> {
 	await new Promise(resolve => connection.onInitialized(resolve));	
 	const settings = await getSettings(connection); 
-	let state = { settings };
+	let state : Ext = { settings };
 	function put(newState: Ext): Ext {
-		state = newState;
+		Object.assign(state, newState);
 		return state;
 	}
 	function get(): Ext {

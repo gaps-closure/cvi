@@ -1,5 +1,6 @@
 import Color = require("color");
-import { readdir, readFile, stat } from "fs/promises";
+import { promises } from "fs";
+const { readdir, readFile, stat } = promises;
 import * as path from "path";
 import { Connection, NotificationType, Position, Range } from "vscode-languageserver/node";
 import { TextDocument } from 'vscode-languageserver-textdocument';
@@ -116,7 +117,6 @@ export async function sendTopology(connection: Connection, top: Topology, settin
 	const matchedSourceDir = fullSourceDirPaths.find(p => p === textDocDir);
 	if (matchedSourceDir) {
 		const assignments = top.functions;
-		// const assignments = [...top.global_scoped_vars, ...top.functions];
 		const { tree, tokenStream } = await parseCFile(fullTextDocPath);
 		const defs = functionDefinitions(tree);
 		const levelSet = new Set<string>();
