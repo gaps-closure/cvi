@@ -1,0 +1,122 @@
+{
+	"name": "vscle",
+	"displayName": "vscle",
+	"description": "VSCode extension for CLE",
+	"version": "0.0.1",
+	"publisher": "peratonlabs",
+	"engines": {
+		"vscode": "^1.52.0"
+	},
+	"categories": [
+		"Other"
+	],
+	"activationEvents": [
+		"onLanguage:c",
+		"onLanguage:cpp",
+		"workspaceContains:topology.json"
+	],
+	"main": "./client/out/extension.js",
+	"contributes": {
+		"commands": [
+			{
+				"command": "vscle.startLanguageServer",
+				"title": "CLE: Start Language Server"
+			},
+			{
+				"command": "vscle.stopLanguageServer",
+				"title": "CLE: Stop Language Server"
+			},
+			{
+				"command": "vscle.restartLanguageServer",
+				"title": "CLE: Restart Language Server"
+			},
+			{
+				"command": "vscle.startConflictAnalyzer",
+				"title": "CLE: Start Conflict Analyzer"
+			},
+			{
+				"command": "vscle.wrapInCLE",
+				"title": "CLE: Wrap Selection in Annotation"
+			}
+		],
+		"configuration": {
+			"title": "VSCLE",
+			"properties": {
+				"vscle.sourceDirs": {
+					"type": "array",
+					"default": [
+						"./annotated"
+					],
+					"description": "Source directories to pass into the conflict analyzer."
+				},
+				"vscle.zmqURI": {
+					"type": "string",
+					"default": "tcp://*:5555",
+					"description": "The ZMQ uri to use"
+				},
+				"vscle.conflictAnalyzerCommand": {
+					"type": "string",
+					"default": "make -f .vscode/Makefile.conflicts enclaves",
+					"description": "Path to the conflict analyzer python script"
+				},
+				"vscle.outputPath": {
+					"type": "string",
+					"default": ".",
+					"description": "Directory for topology.json"
+				}
+			}
+		},
+		"snippets": [
+			{
+				"language": "c",
+				"path": "snippets.json"
+			},
+			{
+				"language": "cpp",
+				"path": "snippets.json"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "npm run compile",
+		"compile": "npm run antlr4ts && tsc -b",
+		"watch": "tsc -b -w",
+		"pretest": "npm run compile",
+		"lint": "eslint src --ext ts",
+		"antlr4ts": "antlr4ts -visitor server/src/parsing/C.g4",
+		"test": "node test/out/zmqtest/zmqtest.js"
+	},
+	"devDependencies": {
+		"@types/glob": "^7.1.3",
+		"@types/mocha": "^8.2.2",
+		"@types/node": "14.x",
+		"@types/vscode": "^1.52.0",
+		"@typescript-eslint/eslint-plugin": "^4.26.0",
+		"@typescript-eslint/parser": "^4.26.0",
+		"antlr4ts": "^0.5.0-alpha.4",
+		"antlr4ts-cli": "^0.5.0-alpha.4",
+		"concurrently": "^6.2.0",
+		"eslint": "^7.27.0",
+		"generator-code": "^1.5.0",
+		"glob": "^7.1.7",
+		"mocha": "^8.4.0",
+		"ts-node": "^10.1.0",
+		"typescript": "^4.3.2",
+		"vscode-test": "^1.5.2",
+		"yo": "^4.2.0"
+	},
+	"dependencies": {
+		"@types/antlr4": "^4.7.2",
+		"@types/color": "^3.0.2",
+		"antlr4": "^4.9.2",
+		"color": "^4.0.0",
+		"dotenv": "^10.0.0",
+		"fp-ts": "^2.10.5",
+		"vscode-languageclient": "^7.0.0",
+		"vscode-languageserver": "^7.0.0",
+		"vscode-languageserver-textdocument": "^1.0.1",
+		"vscode-languageserver-types": "^3.16.0",
+		"vscode-uri": "^3.0.2",
+		"zeromq": "^6.0.0-beta.6"
+	}
+}

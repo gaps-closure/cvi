@@ -25,7 +25,7 @@ handle_opts() {
 }
 
 install_vscode () {
-  CODE=$(code -h)
+  CODE=$(code -h --user-data-dir=.)
   if [ $? -eq 0 ]; then
       echo "VS CODE is installed"
       if ! [[ $DRY_RUN ]]; then

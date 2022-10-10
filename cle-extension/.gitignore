@@ -1,0 +1,9 @@
+out
+dist
+node_modules
+build/
+.stack-work/
+.vscode-test/
+*.vsix
+.mypy_cache/
+.antlr/

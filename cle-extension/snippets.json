@@ -1,0 +1,25 @@
+{
+  "CLE Label": {
+    "prefix": ["cle-label"],
+    "body": ["#pragma cle begin ${1:LABEL}", "$TM_SELECTED_TEXT", "#pragma cle end ${1:LABEL}" ],
+    "description": "Insert a CLE Label"
+  },
+  "CLE Global Variable Definition": {
+    "prefix": ["cle-def-global"],
+    "body": "#pragma cle def ${1:LABEL} {\"level\": \"${2:orange}\"}",
+    "description": "Insert a CLE Global Variable Declaration"
+  },
+  "CLE Function Definition": {
+    "prefix": ["cle-def", "cle-def-fun"],
+    "body": ["#pragma cle def ${1:LABEL} {\"level\": \"${2:orange}\", \\", 
+              "\t\"cdf\": [\\", 
+              "\t{\"remotelevel\": \"${3:level}\", \\", 
+              "\t \"guarddirective\": { \"operation\": \"${4:allow}\" }, \\", 
+              "\t \"guarddirection\": \"${5:bidirectional}\", \\", 
+              "\t \"argtaints\": [[$6]], \\", 
+              "\t \"codtaints\": [$7], \\", 
+              "\t \"rettaints\": [$8] } \\", 
+              "\t] }"],
+    "description": "Insert a CLE Function Declaration"
+  }
+}
